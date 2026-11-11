@@ -36,7 +36,7 @@ def _parse_rate_limit_rule(value: object) -> object:
     return {"limit": int(limit), "window_seconds": int(window)}
 
 
-RateLimitSetting = Annotated[RateLimitRule, BeforeValidator(_parse_rate_limit_rule)]
+RateLimitSetting = Annotated[RateLimitRule, BeforeValidator(_parse_rate_limit_rule), NoDecode]
 CommaSeparated = Annotated[list[str], NoDecode]
 
 

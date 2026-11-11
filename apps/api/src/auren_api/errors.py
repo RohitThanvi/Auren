@@ -17,7 +17,13 @@ from auren_api.schemas.common import ErrorBody, ErrorDetail, ErrorResponse
 logger = structlog.get_logger(__name__)
 
 
-class AppError(Exception):
+class AppError(StarletteHTTPException):
+    """Base class for expected, client-visible errors.
+
+    Subclasses ``HTTPException`` so that FastAPI propagates it unchanged even when it is raised
+    while the request body is being read (otherwise it would be rewritten into a generic 400).
+    """
+
     status_code: int = 500
     code: str = "internal_error"
     default_message: str = "An unexpected error occurred."
@@ -29,10 +35,12 @@ class AppError(Exception):
         headers: Mapping[str, str] | None = None,
         details: Sequence[ErrorDetail] = (),
     ) -> None:
-        self.message = message or self.default_message
-        self.headers = dict(headers or {})
+        resolved = message or self.default_message
+        super().__init__(
+            status_code=type(self).status_code, detail=resolved, headers=dict(headers or {})
+        )
+        self.message = resolved
         self.details = list(details)
-        super().__init__(self.message)
 
 
 class UnauthorizedError(AppError):
