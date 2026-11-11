@@ -1,0 +1,19 @@
+processor	: 0
+model name	: Test CPU 3000
+physical id	: 0
+core id		: 0
+
+processor	: 1
+model name	: Test CPU 3000
+physical id	: 0
+core id		: 0
+
+processor	: 2
+model name	: Test CPU 3000
+physical id	: 0
+core id		: 1
+
+processor	: 3
+model name	: Test CPU 3000
+physical id	: 0
+core id		: 1
