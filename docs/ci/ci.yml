@@ -1,0 +1,121 @@
+# Staged at docs/ci/ci.yml because the push token lacked the `workflow` scope.
+# Activate with: mkdir -p .github/workflows && git mv docs/ci/ci.yml .github/workflows/ci.yml
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Credentials below are throwaway values for ephemeral CI service containers only.
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: auren
+          POSTGRES_PASSWORD: ci_only_password
+          POSTGRES_DB: auren_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U auren -d auren_test" --health-interval 5s
+          --health-timeout 3s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      AUREN_ENVIRONMENT: test
+      AUREN_DATABASE_URL: postgresql+asyncpg://auren:ci_only_password@localhost:5432/auren_test
+      AUREN_TEST_DATABASE_URL: postgresql+asyncpg://auren:ci_only_password@localhost:5432/auren_test
+      AUREN_REDIS_URL: redis://localhost:6379/0
+      AUREN_TEST_REDIS_URL: redis://localhost:6379/15
+      AUREN_CLERK_ISSUER: https://clerk.example.test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pyright
+      - name: Migrations apply and match the models
+        run: uv run alembic upgrade head && uv run alembic check
+      - run: uv run pytest --cov
+
+  agent:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pyright
+      - run: uv run pytest --cov
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm -w apps/web run lint
+      - run: npm -w apps/web run format:check
+      - run: npm -w apps/web run typecheck
+      - run: npm -w apps/web run test:coverage
+      - run: npm -w apps/web run build
+
+  contracts:
+    name: contracts are up to date
+    runs-on: ubuntu-latest
+    env:
+      AUREN_ENVIRONMENT: development
+      AUREN_DATABASE_URL: postgresql+asyncpg://auren:ci_only_password@localhost:5432/auren
+      AUREN_REDIS_URL: redis://localhost:6379/0
+      AUREN_CLERK_ISSUER: https://clerk.example.test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: cd apps/api && uv sync --frozen
+      - run: npm ci
+      - run: cd apps/api && uv run python scripts/export_openapi.py ../../packages/contracts/openapi.json
+      - run: npm -w packages/contracts run generate
+      - name: Fail if generated contracts differ from the committed files
+        run: git diff --exit-code -- packages/contracts
+
+  compose:
+    name: docker compose config and API image build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate compose file
+        run: POSTGRES_PASSWORD=ci_only_password docker compose --env-file .env.example config --quiet
+      - name: Build API image
+        run: docker build apps/api
