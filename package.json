@@ -1,0 +1,8 @@
+{
+  "name": "auren",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Auren distributed compute marketplace monorepo (JavaScript workspaces)",
+  "workspaces": ["apps/web", "packages/contracts"],
+  "engines": { "node": ">=20" }
+}
