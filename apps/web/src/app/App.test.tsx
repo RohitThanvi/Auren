@@ -51,7 +51,10 @@ describe("App", () => {
   it("links signed-in users to the dashboard", () => {
     auth.signedIn = true;
     renderAt("/");
-    expect(screen.getByRole("link", { name: "Open dashboard" })).toHaveAttribute("href", "/dashboard");
+    expect(screen.getByRole("link", { name: "Open dashboard" })).toHaveAttribute(
+      "href",
+      "/dashboard",
+    );
   });
 
   it("redirects signed-out visitors away from the dashboard without calling the API", () => {
@@ -77,7 +80,9 @@ describe("App", () => {
 
   it("shows a rate limit message on 429", async () => {
     auth.signedIn = true;
-    const envelope = { error: { code: "rate_limited", message: "x", request_id: null, details: [] } };
+    const envelope = {
+      error: { code: "rate_limited", message: "x", request_id: null, details: [] },
+    };
     vi.stubGlobal("fetch", () => Promise.resolve(Response.json(envelope, { status: 429 })));
     renderAt("/dashboard");
     expect(await screen.findByRole("alert")).toHaveTextContent("Too many requests");

@@ -39,9 +39,16 @@ describe("api client", () => {
 
   it("maps the API error envelope to ApiError, including Retry-After", async () => {
     const envelope = {
-      error: { code: "rate_limited", message: "Too many requests.", request_id: "abc", details: [] },
+      error: {
+        code: "rate_limited",
+        message: "Too many requests.",
+        request_id: "abc",
+        details: [],
+      },
     };
-    const { client } = setup(jsonResponse(envelope, { status: 429, headers: { "Retry-After": "12" } }));
+    const { client } = setup(
+      jsonResponse(envelope, { status: 429, headers: { "Retry-After": "12" } }),
+    );
     const error = await client.get("/v1/me", meResponseSchema).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ApiError);
     expect(error).toMatchObject({
@@ -53,7 +60,9 @@ describe("api client", () => {
   });
 
   it("falls back to a generic ApiError for non-envelope failures", async () => {
-    const { client } = setup(new Response("<html>bad gateway</html>", { status: 502, statusText: "Bad Gateway" }));
+    const { client } = setup(
+      new Response("<html>bad gateway</html>", { status: 502, statusText: "Bad Gateway" }),
+    );
     await expect(client.get("/v1/me", meResponseSchema)).rejects.toMatchObject({
       status: 502,
       code: "unknown_error",
@@ -62,7 +71,9 @@ describe("api client", () => {
   });
 
   it("ignores a malformed Retry-After header", async () => {
-    const { client } = setup(new Response("{}", { status: 503, headers: { "Retry-After": "soon" } }));
+    const { client } = setup(
+      new Response("{}", { status: 503, headers: { "Retry-After": "soon" } }),
+    );
     await expect(client.get("/v1/me", meResponseSchema)).rejects.toMatchObject({
       retryAfterSeconds: null,
     });

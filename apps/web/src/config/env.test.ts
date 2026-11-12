@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { loadEnv } from "./env";
 
-const valid = { VITE_CLERK_PUBLISHABLE_KEY: "pk_test_abc", VITE_API_BASE_URL: "https://api.example.com" };
+const valid = {
+  VITE_CLERK_PUBLISHABLE_KEY: "pk_test_abc",
+  VITE_API_BASE_URL: "https://api.example.com",
+};
 
 describe("loadEnv", () => {
   it("returns validated configuration", () => {
