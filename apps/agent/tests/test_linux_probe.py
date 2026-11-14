@@ -85,18 +85,22 @@ def test_incomplete_meminfo_is_an_error(proc_root: Path, tmp_path: Path) -> None
 def test_gpus_are_parsed_from_nvidia_smi(proc_root: Path, tmp_path: Path) -> None:
     smi = fake_nvidia_smi(
         tmp_path,
-        "print('NVIDIA RTX 4090, 24564, 550.54')\nprint('NVIDIA A100, 81920, 550.54')",
+        "print('0, GPU-aaa, NVIDIA RTX 4090, 24564, 550.54')\n"
+        "print('1, GPU-bbb, NVIDIA A100, 81920, 550.54')",
     )
     gpus = make_probe(proc_root, tmp_path, smi).scan().gpus
-    assert [(gpu.name, gpu.memory_total_bytes, gpu.driver_version) for gpu in gpus] == [
-        ("NVIDIA RTX 4090", 24564 * 1024 * 1024, "550.54"),
-        ("NVIDIA A100", 81920 * 1024 * 1024, "550.54"),
+    assert [
+        (gpu.index, gpu.uuid, gpu.name, gpu.memory_total_bytes, gpu.driver_version) for gpu in gpus
+    ] == [
+        (0, "GPU-aaa", "NVIDIA RTX 4090", 24564 * 1024 * 1024, "550.54"),
+        (1, "GPU-bbb", "NVIDIA A100", 81920 * 1024 * 1024, "550.54"),
     ]
 
 
 def test_unparseable_gpu_rows_are_skipped(proc_root: Path, tmp_path: Path) -> None:
     smi = fake_nvidia_smi(
-        tmp_path, "print('garbage')\nprint('GPU, notanumber, 1')\nprint('OK, 10, 1')"
+        tmp_path,
+        "print('garbage')\nprint('0, GPU-x, GPU, notanumber, 1')\nprint('2, GPU-y, OK, 10, 1')",
     )
     gpus = make_probe(proc_root, tmp_path, smi).scan().gpus
     assert [gpu.name for gpu in gpus] == ["OK"]
