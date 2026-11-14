@@ -1,4 +1,4 @@
-"""Agent command line: ``python -m auren_agent {scan,run}``."""
+"""Agent command line: ``python -m auren_agent {scan,status,run}``."""
 
 import argparse
 import sys
@@ -6,25 +6,24 @@ from collections.abc import Sequence
 
 import structlog
 
-from auren_agent.config import AgentSettings, get_settings
-from auren_agent.hardware.linux import LinuxHardwareProbe
-from auren_agent.hardware.probe import HardwareProbe, HardwareProbeError
+from auren_agent.config import get_settings
+from auren_agent.hardware.errors import HardwareProbeError
 from auren_agent.logging import configure_logging
+from auren_agent.resources.policy import PolicyError
+from auren_agent.status import build_probe, collect_status
 
 logger = structlog.get_logger(__name__)
-
-
-def build_probe(settings: AgentSettings) -> HardwareProbe:
-    return LinuxHardwareProbe(
-        storage_path=settings.storage_path,
-        gpu_probe_timeout_seconds=settings.gpu_probe_timeout_seconds,
-    )
 
 
 def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="auren-agent")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("scan", help="print the hardware inventory as JSON and exit")
+    commands.add_parser(
+        "status",
+        help="print inventory, security capabilities, health, availability and allocatable "
+        "capacity as JSON and exit (reads the provider policy if configured)",
+    )
     commands.add_parser(
         "run", help="start the agent (development mode: scans hardware, no network, no workloads)"
     )
@@ -35,6 +34,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(sys.argv[1:] if argv is None else argv)
     settings = get_settings()
     configure_logging(settings.log_level)
+    if args.command == "status":
+        try:
+            report = collect_status(settings)
+        except (HardwareProbeError, PolicyError) as exc:
+            logger.error("status_failed", reason=str(exc))
+            return 1
+        sys.stdout.write(report.model_dump_json(indent=2) + "\n")
+        return 0
     try:
         inventory = build_probe(settings).scan()
     except HardwareProbeError as exc:

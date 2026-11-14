@@ -1,23 +1,22 @@
 """Linux hardware probe: reads /proc and shutil, and queries NVIDIA GPUs via nvidia-smi.
 
-nvidia-smi is executed with a fixed argument list (no shell, no external input) and a timeout.
+nvidia-smi is run through ``hardware.nvidia`` (fixed argument list, no shell, timeout).
 """
 
-import csv
 import shutil
-import subprocess
 from pathlib import Path
 
 import structlog
 
+from auren_agent.hardware.errors import HardwareProbeError
 from auren_agent.hardware.models import CpuInfo, GpuInfo, HardwareInventory, MemoryInfo, StorageInfo
-from auren_agent.hardware.probe import HardwareProbeError
+from auren_agent.hardware.nvidia import query_gpu_fields
 
 logger = structlog.get_logger(__name__)
 
 _BYTES_PER_KIB = 1024
 _BYTES_PER_MIB = 1024 * 1024
-_NVIDIA_QUERY = ("--query-gpu=name,memory.total,driver_version", "--format=csv,noheader,nounits")
+_GPU_FIELDS = ("index", "uuid", "name", "memory.total", "driver_version")
 
 
 class LinuxHardwareProbe:
@@ -33,6 +32,10 @@ class LinuxHardwareProbe:
         self._gpu_probe_timeout_seconds = gpu_probe_timeout_seconds
         self._proc_root = proc_root
         self._nvidia_smi = nvidia_smi if nvidia_smi is not None else shutil.which("nvidia-smi")
+
+    @property
+    def nvidia_smi(self) -> str | None:
+        return self._nvidia_smi
 
     def scan(self) -> HardwareInventory:
         return HardwareInventory(
@@ -97,30 +100,23 @@ class LinuxHardwareProbe:
     def _read_gpus(self) -> list[GpuInfo]:
         if self._nvidia_smi is None:
             return []
-        try:
-            result = subprocess.run(  # noqa: S603  # fixed argv, no shell, no external input
-                [self._nvidia_smi, *_NVIDIA_QUERY],
-                capture_output=True,
-                text=True,
-                timeout=self._gpu_probe_timeout_seconds,
-                check=False,
-            )
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            logger.warning("gpu_probe_failed", error=type(exc).__name__)
-            return []
-        if result.returncode != 0:
-            logger.warning("gpu_probe_nonzero_exit", returncode=result.returncode)
+        rows = query_gpu_fields(
+            self._nvidia_smi, _GPU_FIELDS, timeout_seconds=self._gpu_probe_timeout_seconds
+        )
+        if rows is None:
             return []
         gpus: list[GpuInfo] = []
-        for row in csv.reader(result.stdout.splitlines(), skipinitialspace=True):
-            if len(row) != 3 or not row[1].strip().isdigit():
+        for row in rows:
+            if len(row) != len(_GPU_FIELDS) or not row[0].isdigit() or not row[3].isdigit():
                 logger.warning("gpu_probe_unparseable_row")
                 continue
             gpus.append(
                 GpuInfo(
-                    name=row[0].strip(),
-                    memory_total_bytes=int(row[1]) * _BYTES_PER_MIB,
-                    driver_version=row[2].strip(),
+                    index=int(row[0]),
+                    uuid=row[1],
+                    name=row[2],
+                    memory_total_bytes=int(row[3]) * _BYTES_PER_MIB,
+                    driver_version=row[4],
                 )
             )
         return gpus
