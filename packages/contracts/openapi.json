@@ -1,6 +1,134 @@
 {
   "components": {
     "schemas": {
+      "AllocatableRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "cpu_cores": {
+            "maximum": 4096.0,
+            "minimum": 1.0,
+            "title": "Cpu Cores",
+            "type": "integer"
+          },
+          "gpu_indices": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 16,
+            "title": "Gpu Indices",
+            "type": "array"
+          },
+          "memory_bytes": {
+            "maximum": 1125899906842624.0,
+            "minimum": 1.0,
+            "title": "Memory Bytes",
+            "type": "integer"
+          },
+          "storage_bytes": {
+            "maximum": 1125899906842624.0,
+            "minimum": 1.0,
+            "title": "Storage Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cpu_cores",
+          "memory_bytes",
+          "gpu_indices",
+          "storage_bytes"
+        ],
+        "title": "AllocatableRequest",
+        "type": "object"
+      },
+      "CpuReport": {
+        "additionalProperties": false,
+        "properties": {
+          "architecture": {
+            "maxLength": 50,
+            "minLength": 1,
+            "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+            "title": "Architecture",
+            "type": "string"
+          },
+          "confidential_computing_flags": {
+            "items": {
+              "enum": [
+                "sev",
+                "sev_es",
+                "sev_snp",
+                "tdx_host_platform"
+              ],
+              "type": "string"
+            },
+            "maxItems": 4,
+            "title": "Confidential Computing Flags",
+            "type": "array"
+          },
+          "hardware_virtualization": {
+            "title": "Hardware Virtualization",
+            "type": "boolean"
+          },
+          "logical_cores": {
+            "maximum": 4096.0,
+            "minimum": 1.0,
+            "title": "Logical Cores",
+            "type": "integer"
+          },
+          "model_name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+            "title": "Model Name",
+            "type": "string"
+          },
+          "physical_cores": {
+            "anyOf": [
+              {
+                "maximum": 4096.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Physical Cores"
+          }
+        },
+        "required": [
+          "model_name",
+          "architecture",
+          "logical_cores",
+          "hardware_virtualization",
+          "confidential_computing_flags"
+        ],
+        "title": "CpuReport",
+        "type": "object"
+      },
+      "CreateMachineRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "CreateMachineRequest",
+        "type": "object"
+      },
+      "Currency": {
+        "enum": [
+          "INR"
+        ],
+        "title": "Currency",
+        "type": "string"
+      },
       "ErrorBody": {
         "properties": {
           "code": {
@@ -77,6 +205,254 @@
         "title": "ErrorResponse",
         "type": "object"
       },
+      "GpuReport": {
+        "additionalProperties": false,
+        "properties": {
+          "driver_version": {
+            "maxLength": 50,
+            "minLength": 1,
+            "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+            "title": "Driver Version",
+            "type": "string"
+          },
+          "memory_total_bytes": {
+            "maximum": 1125899906842624.0,
+            "minimum": 0.0,
+            "title": "Memory Total Bytes",
+            "type": "integer"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "memory_total_bytes",
+          "driver_version"
+        ],
+        "title": "GpuReport",
+        "type": "object"
+      },
+      "InventoryAcceptedResponse": {
+        "properties": {
+          "inventory": {
+            "$ref": "#/components/schemas/InventorySummaryResponse"
+          },
+          "listing_paused": {
+            "title": "Listing Paused",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "inventory",
+          "listing_paused"
+        ],
+        "title": "InventoryAcceptedResponse",
+        "type": "object"
+      },
+      "InventoryReport": {
+        "additionalProperties": false,
+        "properties": {
+          "cpu": {
+            "$ref": "#/components/schemas/CpuReport"
+          },
+          "gpus": {
+            "items": {
+              "$ref": "#/components/schemas/GpuReport"
+            },
+            "maxItems": 16,
+            "title": "Gpus",
+            "type": "array"
+          },
+          "memory": {
+            "$ref": "#/components/schemas/MemoryReport"
+          },
+          "network": {
+            "items": {
+              "$ref": "#/components/schemas/NetworkInterfaceReport"
+            },
+            "maxItems": 32,
+            "title": "Network",
+            "type": "array"
+          },
+          "platform": {
+            "$ref": "#/components/schemas/PlatformReport"
+          },
+          "storage": {
+            "$ref": "#/components/schemas/StorageReport"
+          }
+        },
+        "required": [
+          "cpu",
+          "memory",
+          "gpus",
+          "storage",
+          "platform",
+          "network"
+        ],
+        "title": "InventoryReport",
+        "type": "object"
+      },
+      "InventorySummaryResponse": {
+        "properties": {
+          "confidential_computing_flags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Confidential Computing Flags",
+            "type": "array"
+          },
+          "gpu_count": {
+            "title": "Gpu Count",
+            "type": "integer"
+          },
+          "hardware_virtualization": {
+            "title": "Hardware Virtualization",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kvm_available": {
+            "title": "Kvm Available",
+            "type": "boolean"
+          },
+          "logical_cores": {
+            "title": "Logical Cores",
+            "type": "integer"
+          },
+          "memory_total_bytes": {
+            "title": "Memory Total Bytes",
+            "type": "integer"
+          },
+          "received_at": {
+            "format": "date-time",
+            "title": "Received At",
+            "type": "string"
+          },
+          "storage_total_bytes": {
+            "title": "Storage Total Bytes",
+            "type": "integer"
+          },
+          "verification": {
+            "const": "self_reported",
+            "default": "self_reported",
+            "title": "Verification",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "received_at",
+          "logical_cores",
+          "memory_total_bytes",
+          "storage_total_bytes",
+          "gpu_count",
+          "hardware_virtualization",
+          "kvm_available",
+          "confidential_computing_flags"
+        ],
+        "title": "InventorySummaryResponse",
+        "type": "object"
+      },
+      "ListingRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "cpu_cores": {
+            "maximum": 4096.0,
+            "minimum": 1.0,
+            "title": "Cpu Cores",
+            "type": "integer"
+          },
+          "gpu_indices": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 16,
+            "title": "Gpu Indices",
+            "type": "array"
+          },
+          "max_hosting_hours": {
+            "minimum": 1.0,
+            "title": "Max Hosting Hours",
+            "type": "integer"
+          },
+          "memory_bytes": {
+            "maximum": 1125899906842624.0,
+            "minimum": 1.0,
+            "title": "Memory Bytes",
+            "type": "integer"
+          },
+          "price_per_hour_minor": {
+            "maximum": 1125899906842624.0,
+            "minimum": 1.0,
+            "title": "Price Per Hour Minor",
+            "type": "integer"
+          },
+          "storage_bytes": {
+            "maximum": 1125899906842624.0,
+            "minimum": 1.0,
+            "title": "Storage Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cpu_cores",
+          "memory_bytes",
+          "gpu_indices",
+          "storage_bytes",
+          "price_per_hour_minor",
+          "max_hosting_hours"
+        ],
+        "title": "ListingRequest",
+        "type": "object"
+      },
+      "ListingResponse": {
+        "properties": {
+          "cpu_cores": {
+            "title": "Cpu Cores",
+            "type": "integer"
+          },
+          "gpu_indices": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Gpu Indices",
+            "type": "array"
+          },
+          "max_hosting_hours": {
+            "title": "Max Hosting Hours",
+            "type": "integer"
+          },
+          "memory_bytes": {
+            "title": "Memory Bytes",
+            "type": "integer"
+          },
+          "price_per_hour": {
+            "$ref": "#/components/schemas/MoneyResponse"
+          },
+          "storage_bytes": {
+            "title": "Storage Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "price_per_hour",
+          "cpu_cores",
+          "memory_bytes",
+          "gpu_indices",
+          "storage_bytes",
+          "max_hosting_hours"
+        ],
+        "title": "ListingResponse",
+        "type": "object"
+      },
       "LiveResponse": {
         "properties": {
           "status": {
@@ -90,6 +466,67 @@
         ],
         "title": "LiveResponse",
         "type": "object"
+      },
+      "MachineResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "inventory": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InventorySummaryResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "listing": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ListingResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/MachineStatus"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "status",
+          "created_at",
+          "inventory",
+          "listing"
+        ],
+        "title": "MachineResponse",
+        "type": "object"
+      },
+      "MachineStatus": {
+        "enum": [
+          "registered",
+          "listed",
+          "paused",
+          "withdrawn"
+        ],
+        "title": "MachineStatus",
+        "type": "string"
       },
       "MeResponse": {
         "properties": {
@@ -111,6 +548,139 @@
           "roles"
         ],
         "title": "MeResponse",
+        "type": "object"
+      },
+      "MemoryReport": {
+        "additionalProperties": false,
+        "properties": {
+          "available_bytes": {
+            "maximum": 1125899906842624.0,
+            "minimum": 0.0,
+            "title": "Available Bytes",
+            "type": "integer"
+          },
+          "total_bytes": {
+            "maximum": 1125899906842624.0,
+            "minimum": 1.0,
+            "title": "Total Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total_bytes",
+          "available_bytes"
+        ],
+        "title": "MemoryReport",
+        "type": "object"
+      },
+      "MoneyResponse": {
+        "properties": {
+          "amount_minor": {
+            "title": "Amount Minor",
+            "type": "integer"
+          },
+          "currency": {
+            "$ref": "#/components/schemas/Currency"
+          }
+        },
+        "required": [
+          "amount_minor",
+          "currency"
+        ],
+        "title": "MoneyResponse",
+        "type": "object"
+      },
+      "NetworkInterfaceReport": {
+        "additionalProperties": false,
+        "properties": {
+          "is_up": {
+            "title": "Is Up",
+            "type": "boolean"
+          },
+          "name": {
+            "maxLength": 32,
+            "minLength": 1,
+            "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+            "title": "Name",
+            "type": "string"
+          },
+          "speed_mbps": {
+            "anyOf": [
+              {
+                "maximum": 1000000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speed Mbps"
+          }
+        },
+        "required": [
+          "name",
+          "is_up"
+        ],
+        "title": "NetworkInterfaceReport",
+        "type": "object"
+      },
+      "PlatformReport": {
+        "additionalProperties": false,
+        "properties": {
+          "kernel_release": {
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+            "title": "Kernel Release",
+            "type": "string"
+          },
+          "kvm_available": {
+            "title": "Kvm Available",
+            "type": "boolean"
+          },
+          "os_name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+            "title": "Os Name",
+            "type": "string"
+          },
+          "system": {
+            "maxLength": 50,
+            "minLength": 1,
+            "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+            "title": "System",
+            "type": "string"
+          }
+        },
+        "required": [
+          "system",
+          "kernel_release",
+          "os_name",
+          "kvm_available"
+        ],
+        "title": "PlatformReport",
+        "type": "object"
+      },
+      "PriceRangeResponse": {
+        "properties": {
+          "base": {
+            "$ref": "#/components/schemas/MoneyResponse"
+          },
+          "ceiling": {
+            "$ref": "#/components/schemas/MoneyResponse"
+          },
+          "floor": {
+            "$ref": "#/components/schemas/MoneyResponse"
+          }
+        },
+        "required": [
+          "base",
+          "floor",
+          "ceiling"
+        ],
+        "title": "PriceRangeResponse",
         "type": "object"
       },
       "ReadyResponse": {
@@ -150,6 +720,37 @@
         ],
         "title": "Role",
         "type": "string"
+      },
+      "StorageReport": {
+        "additionalProperties": false,
+        "properties": {
+          "free_bytes": {
+            "maximum": 1125899906842624.0,
+            "minimum": 0.0,
+            "title": "Free Bytes",
+            "type": "integer"
+          },
+          "path": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+            "title": "Path",
+            "type": "string"
+          },
+          "total_bytes": {
+            "maximum": 1125899906842624.0,
+            "minimum": 1.0,
+            "title": "Total Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path",
+          "total_bytes",
+          "free_bytes"
+        ],
+        "title": "StorageReport",
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -291,6 +892,1092 @@
         "summary": "Current user",
         "tags": [
           "users"
+        ]
+      }
+    },
+    "/v1/provider/enable": {
+      "post": {
+        "operationId": "enable_provider_v1_provider_enable_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Become a provider (self-service)",
+        "tags": [
+          "provider"
+        ]
+      }
+    },
+    "/v1/provider/machines": {
+      "get": {
+        "operationId": "list_machines_v1_provider_machines_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MachineResponse"
+                  },
+                  "title": "Response List Machines V1 Provider Machines Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List my machines (bounded by the per-provider machine limit)",
+        "tags": [
+          "provider"
+        ]
+      },
+      "post": {
+        "operationId": "create_machine_v1_provider_machines_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMachineRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MachineResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Register a machine",
+        "tags": [
+          "provider"
+        ]
+      }
+    },
+    "/v1/provider/machines/{machine_id}": {
+      "get": {
+        "operationId": "get_machine_v1_provider_machines__machine_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "machine_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Machine Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MachineResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get one of my machines",
+        "tags": [
+          "provider"
+        ]
+      }
+    },
+    "/v1/provider/machines/{machine_id}/inventory": {
+      "put": {
+        "operationId": "submit_inventory_v1_provider_machines__machine_id__inventory_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "machine_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Machine Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InventoryReport"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryAcceptedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Submit a hardware scan (self-reported)",
+        "tags": [
+          "provider"
+        ]
+      }
+    },
+    "/v1/provider/machines/{machine_id}/listing": {
+      "put": {
+        "operationId": "set_listing_v1_provider_machines__machine_id__listing_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "machine_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Machine Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MachineResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List the machine at a price inside the allowed range",
+        "tags": [
+          "provider"
+        ]
+      }
+    },
+    "/v1/provider/machines/{machine_id}/pause": {
+      "post": {
+        "operationId": "pause_machine_v1_provider_machines__machine_id__pause_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "machine_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Machine Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MachineResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Pause hosting",
+        "tags": [
+          "provider"
+        ]
+      }
+    },
+    "/v1/provider/machines/{machine_id}/price-range": {
+      "post": {
+        "operationId": "price_range_v1_provider_machines__machine_id__price_range_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "machine_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Machine Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AllocatableRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceRangeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Price range for an offered allocation",
+        "tags": [
+          "provider"
+        ]
+      }
+    },
+    "/v1/provider/machines/{machine_id}/resume": {
+      "post": {
+        "operationId": "resume_machine_v1_provider_machines__machine_id__resume_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "machine_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Machine Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MachineResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Resume hosting",
+        "tags": [
+          "provider"
+        ]
+      }
+    },
+    "/v1/provider/machines/{machine_id}/withdraw": {
+      "post": {
+        "operationId": "withdraw_machine_v1_provider_machines__machine_id__withdraw_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "machine_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Machine Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MachineResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Withdraw the machine permanently",
+        "tags": [
+          "provider"
         ]
       }
     }

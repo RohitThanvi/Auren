@@ -32,6 +32,19 @@ Provider host (apps/agent) --outbound TLS--> API   (protocol: NOT YET IMPLEMENTE
 
 Dependencies point inward (api -> services -> repositories -> models/domain). There are no cycles. Background jobs are not implemented yet; when added they live in a `jobs/` package calling services, never routes.
 
+## Provider onboarding and pricing (implemented)
+
+`api/v1/provider.py` -> `services/provider.ProviderService` -> `repositories/machines.py`. Rules live in `domain/`:
+
+- `domain/inventory.py`: `InventorySnapshot` and `check_allocatable` (an offer must fit inside the scanned machine, capped at `AUREN_PROVIDER_MAX_ALLOCATABLE_BPS` of CPU, memory and storage; GPUs are selected by index).
+- `domain/pricing.py`: `price_range` from a `RateCard` (per core-hour, GiB-hour of memory, GiB-hour of GPU VRAM, 100 GiB-hour of storage), floor and ceiling in basis points. Integer arithmetic only; partial GiB are not billed.
+- `domain/machine.py`: `registered -> listed <-> paused`, any non-withdrawn state `-> withdrawn` (terminal).
+- Scans are append-only rows; the newest is current. A new scan that no longer supports an existing listing (capacity or price band) pauses the machine automatically.
+- Every machine query is scoped by `owner_user_id`; another user's machine returns the same 404 as a missing one.
+- Machine mutations lock the machine row (`SELECT ... FOR UPDATE`); the per-provider machine limit locks the owner row so concurrent creates cannot exceed it.
+
+Only machines with status `listed` may ever be offered to buyers. No buyer-facing discovery exists yet.
+
 ## Dependency injection
 
 `main.create_app` builds a frozen `Container` (settings, DB engine, session factory, Redis, HTTP client, token verifier, rate limiter) during lifespan. Routes obtain it through FastAPI dependencies in `api/deps.py`. Tests replace container members with `dataclasses.replace`.

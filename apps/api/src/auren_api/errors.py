@@ -12,6 +12,12 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from auren_api.domain.errors import (
+    ConflictViolationError,
+    DomainError,
+    ResourceNotFoundError,
+    RuleViolationError,
+)
 from auren_api.schemas.common import ErrorBody, ErrorDetail, ErrorResponse
 
 logger = structlog.get_logger(__name__)
@@ -117,6 +123,18 @@ def register_error_handlers(app: FastAPI) -> None:
             details=exc.details,
             headers=exc.headers,
         )
+
+    @app.exception_handler(DomainError)
+    async def _domain_error(_: Request, exc: DomainError) -> JSONResponse:
+        if isinstance(exc, ResourceNotFoundError):
+            status_code = 404
+        elif isinstance(exc, ConflictViolationError):
+            status_code = 409
+        elif isinstance(exc, RuleViolationError):
+            status_code = 422
+        else:
+            raise exc
+        return error_response(status_code=status_code, code=exc.code, message=exc.message)
 
     @app.exception_handler(RequestValidationError)
     async def _validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:

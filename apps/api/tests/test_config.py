@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from auren_api.config import Environment, RateLimitRule, Settings
+from tests.support import PRICING
 
 
 def test_rate_limits_parse_from_environment_form(
@@ -16,6 +17,12 @@ def test_rate_limits_parse_from_environment_form(
         database_url=base.database_url,
         redis_url=base.redis_url,
         clerk_issuer=base.clerk_issuer,
+        pricing_cpu_core_hour_minor=1,
+        pricing_memory_gib_hour_minor=1,
+        pricing_gpu_vram_gib_hour_minor=1,
+        pricing_storage_100gib_hour_minor=1,
+        pricing_floor_bps=7000,
+        pricing_ceiling_bps=15000,
     )
     assert settings.rate_limit_upload == RateLimitRule(limit=7, window_seconds=90)
 
@@ -91,3 +98,37 @@ def test_secrets_are_not_exposed_in_repr(make_settings: Callable[..., Settings])
 def test_unknown_setting_is_rejected(make_settings: Callable[..., Settings]) -> None:
     with pytest.raises(ValidationError):
         make_settings(not_a_setting=1)
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"pricing_floor_bps": 0},
+        {"pricing_floor_bps": 10_001},
+        {"pricing_ceiling_bps": 9_999},
+        {"pricing_cpu_core_hour_minor": 0},
+        {"provider_max_allocatable_bps": 0},
+        {"provider_max_allocatable_bps": 10_001},
+        {"provider_max_machines": 0},
+    ],
+)
+def test_invalid_pricing_and_provider_limits_are_rejected(
+    make_settings: Callable[..., Settings], override: dict[str, int]
+) -> None:
+    with pytest.raises(ValidationError):
+        make_settings(**override)
+
+
+def test_pricing_has_no_defaults(
+    monkeypatch: pytest.MonkeyPatch, make_settings: Callable[..., Settings]
+) -> None:
+    base = make_settings()
+    for name in PRICING:
+        monkeypatch.delenv(f"AUREN_{name.upper()}", raising=False)
+    with pytest.raises(ValidationError, match="pricing_cpu_core_hour_minor"):
+        Settings(  # pyright: ignore[reportCallIssue]
+            environment=base.environment,
+            database_url=base.database_url,
+            redis_url=base.redis_url,
+            clerk_issuer=base.clerk_issuer,
+        )

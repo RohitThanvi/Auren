@@ -40,3 +40,12 @@ Context: the push token lacked the `workflow` scope. Decision: the workflow is c
 
 ## ADR-0013: Docker only for the first (trusted) phase; microVM before untrusted workloads
 Decision: Docker packaging first; VM/microVM isolation is a release gate for running untrusted buyer code (SECURITY.md).
+
+## ADR-0014: Self-service providers (no approval gate)
+Context: the product is an open market; a provider's device is scanned and the provider lists it. Decision: any signed-in user can enable the provider role. Trade-offs: no vetting, so trust must come from the platform: verified scans (benchmarks), isolation, reputation and limits (machines per provider, rate limits). Until those exist, self-reported hardware claims are not trustworthy and must be labelled so (`verification: self_reported`). Alternative considered: admin approval; rejected by product decision.
+
+## ADR-0015: Platform-computed price band, provider-chosen price
+Decision: the platform computes a base price from an operator-configured rate card (no built-in defaults) for the offered allocation, and permits any price between `floor` and `ceiling` basis points of it. GPUs are priced by selected VRAM, a deliberate simplification (no per-model pricing yet). Money is integer minor units; whole GiB only. Alternatives: fully free pricing (no guard against absurd or abusive prices); fixed prices (no market). Revisit GPU pricing when real market data exists.
+
+## ADR-0016: No privacy claim against the provider without attested confidential computing (PROPOSED: needs product decision)
+Context and analysis: SECURITY.md, section "Provider cannot see the buyer's work". Containers and microVMs protect the host from the workload, not the workload from the host. A provider with root can read guest memory and disk. Decision proposed: (a) offer a Standard tier with no confidentiality guarantee against the provider and say so in the UI; (b) offer a Confidential tier only on hosts that pass remote attestation (AMD SEV-SNP or Intel TDX, and a confidential-capable GPU for GPU jobs); (c) never use copy such as "your provider cannot see your work" for the Standard tier. Status: proposed, pending owner decision.

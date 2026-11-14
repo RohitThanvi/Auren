@@ -84,6 +84,20 @@ class Settings(BaseSettings):
     jwks_cache_ttl_seconds: int = Field(default=3600, gt=0)
     jwks_min_refresh_interval_seconds: int = Field(default=30, ge=0)
 
+    # Marketplace pricing. Rates are business decisions, so they have no defaults: the
+    # deployment must set them explicitly. All amounts are INR minor units (paise) per hour.
+    pricing_cpu_core_hour_minor: int = Field(gt=0)
+    pricing_memory_gib_hour_minor: int = Field(gt=0)
+    pricing_gpu_vram_gib_hour_minor: int = Field(gt=0)
+    pricing_storage_100gib_hour_minor: int = Field(gt=0)
+    # A provider may charge between floor and ceiling basis points of the computed base price.
+    pricing_floor_bps: int = Field(gt=0, le=10_000)
+    pricing_ceiling_bps: int = Field(ge=10_000)
+    # Share of a machine's CPU, memory and storage that may be offered (rest stays with host).
+    provider_max_allocatable_bps: int = Field(default=9_000, gt=0, le=10_000)
+    provider_max_machines: int = Field(default=20, gt=0)
+    provider_max_hosting_hours: int = Field(default=720, gt=0)
+
     rate_limit_anonymous: RateLimitSetting = RateLimitRule(limit=60, window_seconds=60)
     rate_limit_authenticated: RateLimitSetting = RateLimitRule(limit=120, window_seconds=60)
     rate_limit_auth: RateLimitSetting = RateLimitRule(limit=10, window_seconds=60)

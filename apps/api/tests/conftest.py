@@ -19,7 +19,7 @@ from sqlalchemy.engine import make_url
 from auren_api.auth.clerk import ClerkTokenVerifier
 from auren_api.config import Environment, Settings, get_settings
 from auren_api.main import create_app
-from tests.support import AUTHORIZED_PARTY, ISSUER, TokenFactory
+from tests.support import AUTHORIZED_PARTY, ISSUER, PRICING, TokenFactory
 
 API_ROOT = Path(__file__).resolve().parents[1]
 
@@ -53,6 +53,8 @@ def migrated_database(database_url: str, redis_url: str) -> Iterator[None]:
     patch.setenv("AUREN_DATABASE_URL", database_url)
     patch.setenv("AUREN_REDIS_URL", redis_url)
     patch.setenv("AUREN_CLERK_ISSUER", ISSUER)
+    for name, value in PRICING.items():
+        patch.setenv(f"AUREN_{name.upper()}", str(value))
     get_settings.cache_clear()
     config = Config(str(API_ROOT / "alembic.ini"))
     config.set_main_option("script_location", str(API_ROOT / "migrations"))
@@ -74,6 +76,7 @@ def make_settings(database_url: str, redis_url: str) -> Callable[..., Settings]:
             "clerk_authorized_parties": [AUTHORIZED_PARTY],
             "cors_allowed_origins": [AUTHORIZED_PARTY],
             "log_level": "WARNING",
+            **PRICING,
             **overrides,
         }
         return Settings(**values)  # pyright: ignore[reportArgumentType]
@@ -145,7 +148,12 @@ class ClientHandle:
         self.app.state.container = dataclasses.replace(container, token_verifier=verifier)
         if reset_database:
             async with self.app.state.container.engine.begin() as connection:
-                await connection.execute(text("TRUNCATE users, user_roles CASCADE"))
+                await connection.execute(
+                    text(
+                        "TRUNCATE machine_listings, machine_inventories, machines, "
+                        "user_roles, users CASCADE"
+                    )
+                )
         await container.redis.flushdb()
         self.client = httpx.AsyncClient(
             transport=httpx.ASGITransport(app=self.app), base_url="http://testserver"

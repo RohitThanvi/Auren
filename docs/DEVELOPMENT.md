@@ -31,6 +31,8 @@ Configuration is validated at startup; the process refuses to start on invalid v
 | `AUREN_CORS_ALLOWED_ORIGINS` | Comma-separated explicit origins (no wildcards) |
 | `AUREN_CLERK_ISSUER`, `AUREN_CLERK_AUTHORIZED_PARTIES`, `AUREN_CLERK_AUDIENCE` | Token verification |
 | `AUREN_TRUSTED_PROXY_COUNT` | Reverse proxies in front of the API (0 = ignore `X-Forwarded-For`) |
+| `AUREN_PRICING_*` (six values, **required**) | Rate card (paise per unit-hour) and the floor/ceiling band in basis points. The values in `.env.example` are placeholders; pricing is a business decision |
+| `AUREN_PROVIDER_MAX_ALLOCATABLE_BPS`, `AUREN_PROVIDER_MAX_MACHINES`, `AUREN_PROVIDER_MAX_HOSTING_HOURS` | Share of a machine that may be offered, machines per provider, longest hosting duration |
 | `AUREN_RATE_LIMIT_<POLICY>` | `<requests>/<window_seconds>` for `ANONYMOUS`, `AUTHENTICATED`, `AUTH`, `TICKET_CREATION`, `SESSION_CREATION`, `UPLOAD`, `EXPENSIVE` |
 | `AUREN_RATE_LIMIT_FAIL_OPEN` | Allow requests when Redis is down (default `false`) |
 | `AUREN_DB_*`, `AUREN_MAX_REQUEST_BODY_BYTES`, `AUREN_*_TIMEOUT_SECONDS` | Pool sizes, statement timeout, body cap, timeouts |

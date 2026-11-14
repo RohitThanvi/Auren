@@ -13,6 +13,10 @@ Provider agent, hardware scanning, resource inventory, agent protocol implementa
 
 The agent protocol definition, API, database, `packages/contracts/**`, `docker-compose.yml`, CI, other `docs/` files.
 
+## Scan contract (shared with the API)
+
+The API accepts exactly the JSON that `python -m auren_agent scan` prints, validated strictly (unknown fields rejected). `packages/contracts/examples/inventory.json` is the shared example; `tests/test_cli.py` checks it against the agent model. **Adding or renaming a scan field requires the backend owner to change the API first**, otherwise submitted scans will be rejected. Reported confidential-computing flags are indicators, not attestation.
+
 ## Current state
 
 Development mode only: `scan` and `run` read CPU, memory, NVIDIA GPUs and storage through `HardwareProbe`/`LinuxHardwareProbe`. The agent makes no network connections and runs no workloads.

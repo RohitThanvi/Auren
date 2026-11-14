@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from auren_api.auth.clerk import ClerkTokenVerifier
 from auren_api.config import Settings
+from auren_api.domain.provider_policy import ProviderPolicy
 from auren_api.infrastructure.rate_limit import RedisRateLimiter
 
 
@@ -20,3 +21,4 @@ class Container:
     http_client: httpx.AsyncClient
     token_verifier: ClerkTokenVerifier
     rate_limiter: RedisRateLimiter
+    provider_policy: ProviderPolicy

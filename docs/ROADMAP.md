@@ -9,7 +9,8 @@ Monorepo, tooling, shared contracts, Clerk verification, user/role model, rate l
 Activate CI on GitHub; run the Compose stack and fix anything it reveals; add dependency scanning; frontend CSP for the chosen Clerk instance; audited admin workflow to grant `provider`/`admin`.
 
 ## M2: Provider registration (backend + agent)
-Decide and document the agent protocol (backend owner). Machine registration with enrolment token, per-machine credentials, inventory upload, heartbeats, provider dashboard (frontend). Depends on M1.
+Done: self-service provider role, machine registration, scan intake, server-side price band, listing, lifecycle (API only; no UI).
+To do: agent protocol and per-machine credentials (today a scan is submitted with the provider's own user session), benchmark verification of self-reported specs (CPU/memory/disk/network throughput measured by the platform), provider dashboard UI (Contributor 1), agent-side network throughput and latency probes. Depends on M1.
 
 ## M3: Marketplace core
 Resource requests, matching, allocation with transactional guarantees, tickets, queues, offers. Depends on M2 and DATABASE.md allocation invariants.

@@ -1,8 +1,9 @@
 """Platform users and their roles. Only the Clerk subject is stored: no email or name."""
 
 import uuid
+from datetime import datetime
 
-from sqlalchemy import Enum, ForeignKey, String, Uuid, text
+from sqlalchemy import DateTime, Enum, ForeignKey, String, Uuid, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from auren_api.domain.roles import Role
@@ -39,4 +40,7 @@ class UserRole(Base):
             values_callable=_role_values,
         ),
         primary_key=True,
+    )
+    granted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )

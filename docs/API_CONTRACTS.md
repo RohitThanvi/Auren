@@ -47,3 +47,21 @@ No list endpoints exist yet. When one is added it must use cursor pagination: qu
 | GET | `/health/live` | none | Process is up. |
 | GET | `/health/ready` | none | PostgreSQL and Redis reachable; `503` with per-check status otherwise. |
 | GET | `/v1/me` | Bearer | Current user `{id, roles}`; provisions the account on first call. |
+| POST | `/v1/provider/enable` | Bearer | Self-service: add the `provider` role (idempotent, strict rate limit). |
+| POST | `/v1/provider/machines` | Provider | Register a machine `{name}` (limit per provider). |
+| GET | `/v1/provider/machines` | Provider | List own machines with latest scan summary and listing (bounded list, not paginated). |
+| GET | `/v1/provider/machines/{id}` | Provider | One own machine. |
+| PUT | `/v1/provider/machines/{id}/inventory` | Provider | Submit a hardware scan (strict schema, see below). |
+| POST | `/v1/provider/machines/{id}/price-range` | Provider | Price band `{base, floor, ceiling}` for an offered allocation. |
+| PUT | `/v1/provider/machines/{id}/listing` | Provider | List at a price inside the band. |
+| POST | `/v1/provider/machines/{id}/pause` `/resume` `/withdraw` | Provider | Lifecycle. |
+
+Provider endpoints return `404 machine_not_found` for machines the caller does not own.
+
+### Provider-specific error codes
+
+`machine_name_taken` (409), `machine_limit_reached` (409), `invalid_state_transition` (409), `machine_withdrawn` (409), `machine_not_found` (404), `inventory_required` (422), `allocation_exceeds_capacity` (422), `price_out_of_range` (422), `max_hosting_hours_exceeded` (422), `listing_required` (422).
+
+### Scan contract
+
+The scan body is exactly the JSON printed by `python -m auren_agent scan`. Request models are **strict**: unknown fields and wrongly typed values (e.g. a price sent as a string) are rejected, and free-text fields reject control characters. `packages/contracts/examples/inventory.json` is a shared example: the agent test suite and the API test suite both must accept it, so neither side can change the shape alone. Money amounts are integer minor units. Capacity facts are labelled `verification: "self_reported"`.

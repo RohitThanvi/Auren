@@ -20,6 +20,7 @@ from auren_api.api.v1.router import api_router
 from auren_api.auth.clerk import ClerkTokenVerifier
 from auren_api.config import Settings, get_settings
 from auren_api.container import Container
+from auren_api.domain.provider_policy import provider_policy_from_settings
 from auren_api.errors import register_error_handlers
 from auren_api.infrastructure.database import create_engine, create_session_factory
 from auren_api.infrastructure.rate_limit import RedisRateLimiter, rules_from_settings
@@ -54,6 +55,7 @@ def _build_container(settings: Settings) -> Container:
             http_client=http_client,
         ),
         rate_limiter=RedisRateLimiter(redis, rules_from_settings(settings), RATE_LIMIT_KEY_PREFIX),
+        provider_policy=provider_policy_from_settings(settings),
     )
 
 

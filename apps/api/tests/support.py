@@ -10,6 +10,16 @@ from jwt.algorithms import RSAAlgorithm
 ISSUER = "https://clerk.example.test"
 AUTHORIZED_PARTY = "https://app.example.test"
 
+# Pricing used by tests (values are test inputs, not product pricing).
+PRICING = {
+    "pricing_cpu_core_hour_minor": 200,
+    "pricing_memory_gib_hour_minor": 50,
+    "pricing_gpu_vram_gib_hour_minor": 300,
+    "pricing_storage_100gib_hour_minor": 100,
+    "pricing_floor_bps": 7000,
+    "pricing_ceiling_bps": 15000,
+}
+
 
 class TokenFactory:
     def __init__(self, key_ids: tuple[str, ...] = ("key-1",)) -> None:

@@ -4,20 +4,43 @@ nvidia-smi is executed with a fixed argument list (no shell, no external input) 
 """
 
 import csv
+import platform
 import shutil
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 
 import structlog
 
-from auren_agent.hardware.models import CpuInfo, GpuInfo, HardwareInventory, MemoryInfo, StorageInfo
+from auren_agent.hardware.models import (
+    CpuInfo,
+    GpuInfo,
+    HardwareInventory,
+    MemoryInfo,
+    NetworkInterface,
+    PlatformInfo,
+    StorageInfo,
+)
 from auren_agent.hardware.probe import HardwareProbeError
 
 logger = structlog.get_logger(__name__)
 
 _BYTES_PER_KIB = 1024
 _BYTES_PER_MIB = 1024 * 1024
+_VIRTUALIZATION_FLAGS = frozenset({"vmx", "svm"})
+_CONFIDENTIAL_COMPUTING_FLAGS = frozenset({"sev", "sev_es", "sev_snp", "tdx_host_platform"})
+_CPU_FLAG_KEYS = frozenset({"flags", "features"})
 _NVIDIA_QUERY = ("--query-gpu=name,memory.total,driver_version", "--format=csv,noheader,nounits")
+
+
+@dataclass(frozen=True, slots=True)
+class LinuxPaths:
+    """Filesystem roots the probe reads from; overridable so tests can use fixture trees."""
+
+    proc: Path = Path("/proc")
+    sys: Path = Path("/sys")
+    dev: Path = Path("/dev")
+    etc: Path = Path("/etc")
 
 
 class LinuxHardwareProbe:
@@ -26,12 +49,12 @@ class LinuxHardwareProbe:
         *,
         storage_path: Path,
         gpu_probe_timeout_seconds: float,
-        proc_root: Path = Path("/proc"),
+        paths: LinuxPaths = LinuxPaths(),  # noqa: B008  # frozen dataclass, safe as a default
         nvidia_smi: str | None = None,
     ) -> None:
         self._storage_path = storage_path
         self._gpu_probe_timeout_seconds = gpu_probe_timeout_seconds
-        self._proc_root = proc_root
+        self._paths = paths
         self._nvidia_smi = nvidia_smi if nvidia_smi is not None else shutil.which("nvidia-smi")
 
     def scan(self) -> HardwareInventory:
@@ -40,10 +63,12 @@ class LinuxHardwareProbe:
             memory=self._read_memory(),
             gpus=self._read_gpus(),
             storage=self._read_storage(),
+            platform=self._read_platform(),
+            network=self._read_network(),
         )
 
     def _read_text(self, name: str) -> str:
-        path = self._proc_root / name
+        path = self._paths.proc / name
         try:
             return path.read_text(encoding="utf-8")
         except OSError as exc:
@@ -54,6 +79,7 @@ class LinuxHardwareProbe:
         logical = 0
         physical: set[tuple[str, str]] = set()
         physical_id = ""
+        flags: set[str] = set()
         for line in self._read_text("cpuinfo").splitlines():
             key, _, value = line.partition(":")
             key, value = key.strip().lower(), value.strip()
@@ -66,10 +92,17 @@ class LinuxHardwareProbe:
                 physical_id = value
             elif key == "core id":
                 physical.add((physical_id, value))
+            elif key in _CPU_FLAG_KEYS and not flags:
+                flags = set(value.split())
         if logical == 0:
             raise HardwareProbeError("no processors found in cpuinfo")
         return CpuInfo(
-            model_name=model_name, logical_cores=logical, physical_cores=len(physical) or None
+            model_name=model_name,
+            architecture=platform.machine(),
+            logical_cores=logical,
+            physical_cores=len(physical) or None,
+            hardware_virtualization=not flags.isdisjoint(_VIRTUALIZATION_FLAGS),
+            confidential_computing_flags=sorted(flags & _CONFIDENTIAL_COMPUTING_FLAGS),
         )
 
     def _read_memory(self) -> MemoryInfo:
@@ -93,6 +126,55 @@ class LinuxHardwareProbe:
         return StorageInfo(
             path=str(self._storage_path), total_bytes=usage.total, free_bytes=usage.free
         )
+
+    def _read_platform(self) -> PlatformInfo:
+        os_name = "unknown"
+        try:
+            release = (self._paths.etc / "os-release").read_text(encoding="utf-8")
+        except OSError:
+            release = ""
+        for line in release.splitlines():
+            key, _, value = line.partition("=")
+            if key == "PRETTY_NAME":
+                os_name = value.strip().strip('"') or "unknown"
+        return PlatformInfo(
+            system=platform.system(),
+            kernel_release=platform.release(),
+            os_name=os_name,
+            kvm_available=(self._paths.dev / "kvm").exists(),
+        )
+
+    def _read_network(self) -> list[NetworkInterface]:
+        """Physical network interfaces (those backed by a device), excluding loopback."""
+        net_root = self._paths.sys / "class" / "net"
+        try:
+            entries = sorted(net_root.iterdir())
+        except OSError:
+            return []
+        interfaces: list[NetworkInterface] = []
+        for entry in entries:
+            if entry.name == "lo" or not (entry / "device").exists():
+                continue
+            interfaces.append(
+                NetworkInterface(
+                    name=entry.name,
+                    speed_mbps=self._read_link_speed(entry / "speed"),
+                    is_up=self._read_stripped(entry / "operstate") == "up",
+                )
+            )
+        return interfaces
+
+    @staticmethod
+    def _read_stripped(path: Path) -> str:
+        try:
+            return path.read_text(encoding="utf-8").strip()
+        except OSError:
+            return ""
+
+    @staticmethod
+    def _read_link_speed(path: Path) -> int | None:
+        text = LinuxHardwareProbe._read_stripped(path)
+        return int(text) if text.lstrip("-").isdigit() and int(text) > 0 else None
 
     def _read_gpus(self) -> list[GpuInfo]:
         if self._nvidia_smi is None:

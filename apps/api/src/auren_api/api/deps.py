@@ -21,6 +21,7 @@ from auren_api.errors import (
     UnauthorizedError,
 )
 from auren_api.infrastructure.rate_limit import RateLimitPolicy
+from auren_api.services.provider import ProviderService
 from auren_api.services.users import UserService
 
 logger = structlog.get_logger(__name__)
@@ -67,6 +68,13 @@ async def get_principal(
 
 
 PrincipalDep = Annotated[Principal, Depends(get_principal)]
+
+
+def get_provider_service(container: ContainerDep, session: SessionDep) -> ProviderService:
+    return ProviderService(session, container.provider_policy)
+
+
+ProviderServiceDep = Annotated[ProviderService, Depends(get_provider_service)]
 
 
 def require_roles(*roles: Role) -> Callable[[Principal], Awaitable[Principal]]:

@@ -4,7 +4,14 @@ Meaningful project changes, newest first. Only shipped behaviour is listed.
 
 ## Unreleased: foundation
 
-### Added
+### Added (provider marketplace foundation)
+- Self-service provider role (`POST /v1/provider/enable`), machine registration with per-provider limit, append-only scan history, server-computed price range and listing inside the range, pause/resume/withdraw, automatic pause when a rescan invalidates a listing. Migration `0002`.
+- Required pricing configuration (`AUREN_PRICING_*`) with no built-in defaults; `AUREN_PROVIDER_*` limits.
+- Agent scan now also reports platform/kernel, KVM availability, hardware virtualization, confidential-computing CPU flags and physical network interfaces with link speed.
+- Shared example scan `packages/contracts/examples/inventory.json` validated by both agent and API tests.
+- Strict request validation (unknown fields and wrong types rejected).
+
+### Added (foundation)
 - Monorepo layout: `apps/api`, `apps/agent`, `apps/web`, `packages/contracts`, `infra`, `docs`.
 - API: application factory with validated environment configuration; structured JSON logging; health (`/health/live`, `/health/ready`) endpoints; consistent error format; request ids; security headers; explicit CORS; request body size limit.
 - API: Clerk JWT verification (RS256/JWKS, issuer, expiry, not-before, authorised party, optional audience) and role-based authorisation (`require_roles`, roles stored in PostgreSQL).

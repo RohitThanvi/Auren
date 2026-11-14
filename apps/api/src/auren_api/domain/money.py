@@ -25,6 +25,12 @@ class Money:
         self._require_same_currency(other)
         return Money(self.amount_minor - other.amount_minor, self.currency)
 
+    def times(self, quantity: int) -> "Money":
+        """Multiply by a non-negative whole quantity."""
+        if quantity < 0:
+            raise ValueError("quantity must be non-negative")
+        return Money(self.amount_minor * quantity, self.currency)
+
     def apply_basis_points(self, basis_points: int) -> "Money":
         """Return ``basis_points`` / 10,000 of this amount, rounded half up (non-negative only)."""
         if self.amount_minor < 0 or basis_points < 0:

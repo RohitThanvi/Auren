@@ -5,6 +5,7 @@ import pytest
 
 from auren_agent import __main__ as cli
 from auren_agent.config import AgentSettings, get_settings
+from auren_agent.hardware.models import HardwareInventory
 
 
 @pytest.fixture(autouse=True)
@@ -18,7 +19,7 @@ def agent_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 def test_scan_prints_a_json_inventory(capsys: pytest.CaptureFixture[str]) -> None:
     assert cli.main(["scan"]) == 0
     inventory = json.loads(capsys.readouterr().out)
-    assert set(inventory) == {"cpu", "memory", "gpus", "storage"}
+    assert set(inventory) == {"cpu", "memory", "gpus", "storage", "platform", "network"}
 
 
 def test_run_starts_in_development_mode_without_output_on_stdout(
@@ -39,3 +40,12 @@ def test_only_development_mode_is_accepted(monkeypatch: pytest.MonkeyPatch) -> N
     get_settings.cache_clear()
     with pytest.raises(ValueError, match="mode"):
         AgentSettings()  # pyright: ignore[reportCallIssue]
+
+
+def test_shared_contract_example_matches_the_agent_inventory_model() -> None:
+    """The backend validates the same file; both sides must keep accepting it."""
+    example = Path(__file__).resolve().parents[3] / "packages/contracts/examples/inventory.json"
+    inventory = HardwareInventory.model_validate_json(example.read_text(encoding="utf-8"))
+    assert json.loads(inventory.model_dump_json()) == json.loads(
+        example.read_text(encoding="utf-8")
+    )

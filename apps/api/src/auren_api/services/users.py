@@ -37,3 +37,16 @@ class UserService:
             clerk_user_id=user.clerk_user_id,
             roles=frozenset(user_role.role for user_role in user.roles),
         )
+
+    async def enable_provider(self, account: UserAccount) -> UserAccount:
+        """Self-service: grant the provider role. Idempotent; takes effect immediately."""
+        await self._users.add_role_if_absent(account.id, Role.PROVIDER)
+        await self._session.commit()
+        user = await self._users.get_by_clerk_user_id(account.clerk_user_id)
+        if user is None:
+            raise RuntimeError("user missing after role grant")
+        return UserAccount(
+            id=user.id,
+            clerk_user_id=user.clerk_user_id,
+            roles=frozenset(user_role.role for user_role in user.roles),
+        )

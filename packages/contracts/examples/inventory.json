@@ -1,0 +1,43 @@
+{
+  "cpu": {
+    "model_name": "AMD EPYC 7B13",
+    "architecture": "x86_64",
+    "logical_cores": 32,
+    "physical_cores": 16,
+    "hardware_virtualization": true,
+    "confidential_computing_flags": [
+      "sev",
+      "sev_es",
+      "sev_snp"
+    ]
+  },
+  "memory": {
+    "total_bytes": 68719476736,
+    "available_bytes": 64424509440
+  },
+  "gpus": [
+    {
+      "name": "NVIDIA GeForce RTX 4090",
+      "memory_total_bytes": 25769803776,
+      "driver_version": "550.54.14"
+    }
+  ],
+  "storage": {
+    "path": "/var/lib/auren-agent",
+    "total_bytes": 1073741824000,
+    "free_bytes": 966367641600
+  },
+  "platform": {
+    "system": "Linux",
+    "kernel_release": "6.8.0-45-generic",
+    "os_name": "Ubuntu 24.04.1 LTS",
+    "kvm_available": true
+  },
+  "network": [
+    {
+      "name": "eth0",
+      "speed_mbps": 1000,
+      "is_up": true
+    }
+  ]
+}

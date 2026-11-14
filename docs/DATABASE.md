@@ -12,7 +12,12 @@ PostgreSQL 16 (`gen_random_uuid()` requires 13+) is the only authoritative datas
 
 ## Current schema
 
-`users(id, clerk_user_id UNIQUE, created_at, updated_at)` and `user_roles(user_id FK RESTRICT, role CHECK IN (buyer, provider, admin), PK(user_id, role))`.
+- `users(id, clerk_user_id UNIQUE, ...)`, `user_roles(user_id FK RESTRICT, role CHECK, granted_at, PK(user_id, role))`.
+- `machines(id, owner_user_id FK RESTRICT, name, status CHECK, UNIQUE(owner_user_id, name))`.
+- `machine_inventories(id, machine_id FK RESTRICT, created_at, logical_cores, memory_total_bytes, storage_total_bytes, gpu_memory_bytes[], hardware_virtualization, kvm_available, confidential_computing_flags[], report JSONB)`: append-only; CHECK constraints on positive capacities.
+- `machine_listings(machine_id PK/FK RESTRICT, price_per_hour_minor, currency, allocatable_*, max_hosting_hours, ...)`: one current offer per machine; CHECK constraints on positive values.
+
+Migrations: `0001` users/roles, `0002` machines, inventories, listings, `granted_at`.
 
 ## Migration policy
 
