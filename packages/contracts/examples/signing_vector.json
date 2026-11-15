@@ -1,0 +1,13 @@
+{
+  "description": "Shared test vector for AUREN-AGENT-V1 request signing. Ed25519 signatures are deterministic.",
+  "private_key_seed_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "public_key_b64url": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg",
+  "machine_id": "11111111-2222-4333-8444-555555555555",
+  "method": "POST",
+  "path": "/v1/agent/scans/claim",
+  "timestamp": 1700000000,
+  "nonce": "AAAAAAAAAAAAAAAAAAAAAA",
+  "body": "{\"a\":1}",
+  "canonical_message": "AUREN-AGENT-V1\nPOST\n/v1/agent/scans/claim\n11111111-2222-4333-8444-555555555555\n1700000000\nAAAAAAAAAAAAAAAAAAAAAA\n015abd7f5cc57a2dd94b7590f04ad8084273905ee33ec5cebeae62276a97f862",
+  "signature_b64url": "8GCrPKoyOC6-imWD2WKzZdJ6Ntj0hv_9BVtg2OhWRO--f_J0AxI7AD-x61RgoeKnCQcBapbZ8teM4l1eNZIYAQ"
+}

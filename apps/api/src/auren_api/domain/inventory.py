@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from auren_api.domain.errors import RuleViolationError
+from auren_api.domain.machine import ListingTier
 
 BASIS_POINTS = 10_000
 
@@ -18,6 +19,7 @@ class InventorySnapshot:
     gpu_memory_bytes: tuple[int, ...]
     hardware_virtualization: bool
     kvm_available: bool
+    confidential_computing_flags: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,4 +58,36 @@ def _check_gpu_indices(indices: Sequence[int], gpu_count: int) -> None:
     if len(set(indices)) != len(indices) or any(not 0 <= i < gpu_count for i in indices):
         raise RuleViolationError(
             "allocation_exceeds_capacity", "GPU selection must reference distinct detected GPUs."
+        )
+
+
+def check_tier(
+    tier: ListingTier,
+    snapshot: InventorySnapshot,
+    allocatable: Allocatable,
+    *,
+    confidential_verified: bool,
+) -> None:
+    """Raise ``RuleViolationError`` unless the machine may be listed in ``tier``.
+
+    The confidential tier needs a host that reports confidential-computing support, has been
+    verified by the platform (a canary guest passed attestation), and offers no GPU: GPU
+    confidentiality cannot be verified yet.
+    """
+    if tier is ListingTier.STANDARD:
+        return
+    if not snapshot.confidential_computing_flags or not snapshot.hardware_virtualization:
+        raise RuleViolationError(
+            "confidential_not_supported",
+            "This machine does not report confidential-computing support.",
+        )
+    if not confidential_verified:
+        raise RuleViolationError(
+            "attestation_required",
+            "The confidential tier requires platform attestation of this machine.",
+        )
+    if allocatable.gpu_indices:
+        raise RuleViolationError(
+            "confidential_gpu_unsupported",
+            "GPUs cannot be offered in the confidential tier yet.",
         )

@@ -7,7 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from auren_api.domain.inventory import Allocatable, InventorySnapshot
-from auren_api.domain.machine import MachineStatus
+from auren_api.domain.machine import ListingTier, MachineStatus
 from auren_api.domain.money import Currency
 
 MAX_LOGICAL_CORES = 4096
@@ -114,6 +114,7 @@ class InventoryReport(_Strict):
             gpu_memory_bytes=tuple(gpu.memory_total_bytes for gpu in self.gpus),
             hardware_virtualization=self.cpu.hardware_virtualization,
             kvm_available=self.platform.kvm_available,
+            confidential_computing_flags=tuple(self.cpu.confidential_computing_flags),
         )
 
 
@@ -122,10 +123,14 @@ class CreateMachineRequest(_Strict):
 
 
 class AllocatableRequest(_Strict):
+    tier: Literal["standard", "confidential"]
     cpu_cores: int = Field(ge=1, le=MAX_LOGICAL_CORES)
     memory_bytes: int = Field(ge=1, le=MAX_BYTES)
     gpu_indices: list[int] = Field(max_length=MAX_GPUS)
     storage_bytes: int = Field(ge=1, le=MAX_BYTES)
+
+    def tier_domain(self) -> ListingTier:
+        return ListingTier(self.tier)
 
     def to_domain(self) -> Allocatable:
         return Allocatable(
@@ -154,7 +159,10 @@ class PriceRangeResponse(BaseModel):
 
 class InventorySummaryResponse(BaseModel):
     id: UUID
+    scan_id: UUID
     received_at: datetime
+    # Single-thread speed (SHA-256 chain, hashes/s) timed by the platform's own clock.
+    cpu_hashes_per_second: int
     logical_cores: int
     memory_total_bytes: int
     storage_total_bytes: int
@@ -162,11 +170,13 @@ class InventorySummaryResponse(BaseModel):
     hardware_virtualization: bool
     kvm_available: bool
     confidential_computing_flags: list[str]
-    # Capacity facts come from the provider's own scan; they are not independently verified.
-    verification: Literal["self_reported"] = "self_reported"
+    # Produced by the platform's enrolled agent with a server-timed benchmark. Hardware facts are
+    # still read on a machine the provider controls, so they are evidence, not proof.
+    verification: Literal["agent_scanned"] = "agent_scanned"
 
 
 class ListingResponse(BaseModel):
+    tier: ListingTier
     price_per_hour: MoneyResponse
     cpu_cores: int
     memory_bytes: int
@@ -180,11 +190,23 @@ class MachineResponse(BaseModel):
     name: str
     status: MachineStatus
     created_at: datetime
+    # True once the platform has attested this machine for the confidential tier.
+    confidential_verified: bool
     inventory: InventorySummaryResponse | None
     listing: ListingResponse | None
 
 
-class InventoryAcceptedResponse(BaseModel):
-    inventory: InventorySummaryResponse
-    # True when the new scan made the existing listing invalid and the machine was paused.
-    listing_paused: bool
+class EnrollmentResponse(BaseModel):
+    # Shown once. Single use; only its hash is stored.
+    enrollment_token: str
+    expires_at: datetime
+
+
+class ScanResponse(BaseModel):
+    id: UUID
+    status: Literal["pending", "claimed", "completed", "failed", "expired"]
+    failure_reason: Literal["expired", "benchmark_mismatch"] | None
+    created_at: datetime
+    expires_at: datetime
+    completed_at: datetime | None
+    cpu_hashes_per_second: int | None

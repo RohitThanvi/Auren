@@ -27,3 +27,10 @@ def require_transition(current: MachineStatus, target: MachineStatus) -> None:
         raise ConflictViolationError(
             "invalid_state_transition", f"A {current.value} machine cannot become {target.value}."
         )
+
+
+class ListingTier(StrEnum):
+    """Standard: no confidentiality guarantee against the provider. Confidential: attested hosts."""
+
+    STANDARD = "standard"
+    CONFIDENTIAL = "confidential"

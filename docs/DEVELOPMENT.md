@@ -37,7 +37,9 @@ Configuration is validated at startup; the process refuses to start on invalid v
 | `AUREN_RATE_LIMIT_FAIL_OPEN` | Allow requests when Redis is down (default `false`) |
 | `AUREN_DB_*`, `AUREN_MAX_REQUEST_BODY_BYTES`, `AUREN_*_TIMEOUT_SECONDS` | Pool sizes, statement timeout, body cap, timeouts |
 | `AUREN_TEST_DATABASE_URL` / `AUREN_TEST_REDIS_URL` | Used only by the test suite; database name must end in `_test` |
-| `AUREN_AGENT_*` | Agent mode (`development` only), storage path, log level, GPU probe timeout |
+| `AUREN_PRICING_CONFIDENTIAL_PREMIUM_BPS` (**required**) | Confidential-tier price factor (basis points, at least 10000) |
+| `AUREN_SCAN_*`, `AUREN_ENROLLMENT_TTL_SECONDS`, `AUREN_AGENT_REQUEST_MAX_SKEW_SECONDS` | Platform scan lifetime, result deadline, benchmark size, enrolment token lifetime, signed-request clock skew |
+| `AUREN_AGENT_*` | Agent mode (`development` only), storage path, log level, GPU probe timeout, `STATE_DIR`, `CONTROL_PLANE_URL`, `ENROLLMENT_TOKEN`, `HTTP_TIMEOUT_SECONDS` |
 | `VITE_CLERK_PUBLISHABLE_KEY`, `VITE_API_BASE_URL` | Frontend build-time configuration (public values only) |
 
 ## Tests and checks
@@ -62,6 +64,15 @@ AUREN_AGENT_MODE=development AUREN_AGENT_STORAGE_PATH=/tmp uv run python -m aure
 ```
 
 `scan` prints the inventory as JSON; `run` logs it and exits (no network, no workloads in development mode).
+
+Enrol and run a platform scan against a running API (token from the provider's `POST .../enrollment`):
+
+```bash
+export AUREN_AGENT_STATE_DIR=~/.auren-agent AUREN_AGENT_CONTROL_PLANE_URL=http://localhost:8000
+AUREN_AGENT_ENROLLMENT_TOKEN=<token> uv run python -m auren_agent enroll --machine-id <machine-id>
+# after the provider requests a scan (POST .../scans):
+uv run python -m auren_agent run-scan
+```
 
 ## Troubleshooting
 

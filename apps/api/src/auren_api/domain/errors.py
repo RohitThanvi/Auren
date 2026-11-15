@@ -20,3 +20,7 @@ class ConflictViolationError(DomainError):
 
 class ResourceNotFoundError(DomainError):
     """The resource does not exist or is not visible to the caller (maps to 404)."""
+
+
+class AuthenticationFailedError(DomainError):
+    """A credential was missing, invalid, expired or already used (maps to 401)."""

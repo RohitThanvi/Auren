@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 
 from auren_api.api.deps import limit_by_ip
-from auren_api.api.v1 import provider, users
+from auren_api.api.v1 import agent, provider, users
 from auren_api.infrastructure.rate_limit import RateLimitPolicy
 from auren_api.schemas.common import ErrorResponse
 
@@ -18,3 +18,4 @@ api_router = APIRouter(
 )
 api_router.include_router(users.router)
 api_router.include_router(provider.router)
+api_router.include_router(agent.router)

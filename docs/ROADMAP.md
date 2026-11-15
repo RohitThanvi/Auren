@@ -9,8 +9,11 @@ Monorepo, tooling, shared contracts, Clerk verification, user/role model, rate l
 Activate CI on GitHub; run the Compose stack and fix anything it reveals; add dependency scanning; frontend CSP for the chosen Clerk instance; audited admin workflow to grant `provider`/`admin`.
 
 ## M2: Provider registration (backend + agent)
-Done: self-service provider role, machine registration, scan intake, server-side price band, listing, lifecycle (API only; no UI).
-To do: agent protocol and per-machine credentials (today a scan is submitted with the provider's own user session), benchmark verification of self-reported specs (CPU/memory/disk/network throughput measured by the platform), provider dashboard UI (Contributor 1), agent-side network throughput and latency probes. Depends on M1.
+Done (API and agent, no UI): self-service provider role, machine registration, agent enrolment with per-machine keys, signed agent protocol, platform-run scans with a server-timed CPU benchmark, server-side price bands per tier, listing, lifecycle.
+To do: provider dashboard and agent installer (Contributor 1 and 2); agent daemon (today scans run on demand via `run-scan`); the verification layers in [SCAN.md](SCAN.md) in priority order: server-measured network, multi-core proof, memory/disk/GPU proofs, TPM attestation. Depends on M1.
+
+## M2b: Confidential tier enablement
+Canary confidential guest per host with attestation verification (AMD SEV-SNP, Intel TDX; confidential GPUs later), writing `confidential_verified_at`, scheduled re-verification, pausing lapsed listings. Needs M2 and the workload runtime from M4 for the guest launch. Until then no machine can list in the Confidential tier.
 
 ## M3: Marketplace core
 Resource requests, matching, allocation with transactional guarantees, tickets, queues, offers. Depends on M2 and DATABASE.md allocation invariants.

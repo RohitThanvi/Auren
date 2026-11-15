@@ -51,17 +51,26 @@ No list endpoints exist yet. When one is added it must use cursor pagination: qu
 | POST | `/v1/provider/machines` | Provider | Register a machine `{name}` (limit per provider). |
 | GET | `/v1/provider/machines` | Provider | List own machines with latest scan summary and listing (bounded list, not paginated). |
 | GET | `/v1/provider/machines/{id}` | Provider | One own machine. |
-| PUT | `/v1/provider/machines/{id}/inventory` | Provider | Submit a hardware scan (strict schema, see below). |
-| POST | `/v1/provider/machines/{id}/price-range` | Provider | Price band `{base, floor, ceiling}` for an offered allocation. |
-| PUT | `/v1/provider/machines/{id}/listing` | Provider | List at a price inside the band. |
+| POST | `/v1/provider/machines/{id}/enrollment` | Provider | One-time token to enrol the agent (returned once). |
+| POST | `/v1/provider/machines/{id}/scans` | Provider | Ask the enrolled agent to run a platform scan. |
+| GET | `/v1/provider/machines/{id}/scans/{scan_id}` | Provider | Scan status and result (`pending`, `claimed`, `completed`, `failed`, `expired`). |
+| POST | `/v1/provider/machines/{id}/price-range` | Provider | Price band `{base, floor, ceiling}` for an offered allocation and `tier`. |
+| PUT | `/v1/provider/machines/{id}/listing` | Provider | List at a `tier` and a price inside that tier's band. |
+| POST | `/v1/agent/enroll` | One-time token | Bind the agent's Ed25519 public key to the machine. |
+| POST | `/v1/agent/scans/claim` | Signed | Claim the next requested scan; returns the challenge and starts the server timer. |
+| POST | `/v1/agent/scans/{id}/result` | Signed | Submit the hardware report and benchmark answer. |
 | POST | `/v1/provider/machines/{id}/pause` `/resume` `/withdraw` | Provider | Lifecycle. |
 
 Provider endpoints return `404 machine_not_found` for machines the caller does not own.
 
 ### Provider-specific error codes
 
-`machine_name_taken` (409), `machine_limit_reached` (409), `invalid_state_transition` (409), `machine_withdrawn` (409), `machine_not_found` (404), `inventory_required` (422), `allocation_exceeds_capacity` (422), `price_out_of_range` (422), `max_hosting_hours_exceeded` (422), `listing_required` (422).
+`machine_name_taken` (409), `machine_limit_reached` (409), `invalid_state_transition` (409), `machine_withdrawn` (409), `scan_in_progress` (409), `scan_not_claimed` (409), `scan_expired` (409), `machine_not_found` (404), `scan_not_found` (404), `no_pending_scan` (404), `inventory_required` (422), `agent_not_enrolled` (422), `allocation_exceeds_capacity` (422), `price_out_of_range` (422), `max_hosting_hours_exceeded` (422), `listing_required` (422), `benchmark_mismatch` (422), `invalid_public_key` (422), `confidential_not_supported` (422), `attestation_required` (422), `confidential_gpu_unsupported` (422), `invalid_enrollment` (401).
+
+### Agent authentication (AUREN-AGENT-V1)
+
+Agent endpoints (except `enroll`) are not Clerk-authenticated. Each request carries `X-Auren-Machine-Id`, `X-Auren-Timestamp` (Unix seconds), `X-Auren-Nonce` (16 to 64 chars of `[A-Za-z0-9_-]`, single use) and `X-Auren-Signature` (unpadded base64url Ed25519 signature) over the UTF-8 lines `AUREN-AGENT-V1`, `METHOD`, `path`, `machine_id`, `timestamp`, `nonce`, `sha256(body) hex` joined by `\n`. Failures return `401` with `WWW-Authenticate: Auren-Signature` and one generic message. The path is signed as received, so proxies must not rewrite it. Shared test vector: `packages/contracts/examples/signing_vector.json`. Full design: [SCAN.md](SCAN.md).
 
 ### Scan contract
 
-The scan body is exactly the JSON printed by `python -m auren_agent scan`. Request models are **strict**: unknown fields and wrongly typed values (e.g. a price sent as a string) are rejected, and free-text fields reject control characters. `packages/contracts/examples/inventory.json` is a shared example: the agent test suite and the API test suite both must accept it, so neither side can change the shape alone. Money amounts are integer minor units. Capacity facts are labelled `verification: "self_reported"`.
+The `report` in a scan result is exactly the JSON printed by `python -m auren_agent scan`. Provider request models are **strict**: unknown fields and wrongly typed values (e.g. a price sent as a string) are rejected, and free-text fields reject control characters. `packages/contracts/examples/inventory.json` is a shared example: the agent test suite and the API test suite both must accept it, so neither side can change the shape alone. Money amounts are integer minor units. Inventories are labelled `verification: "agent_scanned"`: reported through an enrolled agent with a server-timed benchmark, not proven.

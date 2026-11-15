@@ -16,6 +16,7 @@ PRICING = {
     "pricing_memory_gib_hour_minor": 50,
     "pricing_gpu_vram_gib_hour_minor": 300,
     "pricing_storage_100gib_hour_minor": 100,
+    "pricing_confidential_premium_bps": 15000,
     "pricing_floor_bps": 7000,
     "pricing_ceiling_bps": 15000,
 }

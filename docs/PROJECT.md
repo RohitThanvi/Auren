@@ -27,18 +27,18 @@ Python and JupyterLab environments packaged as Docker images. VS Code later. Lin
 ## Provider model: a free market inside a platform-computed band
 
 1. A provider enables the provider role and registers a machine.
-2. The agent scans the device (CPU, memory, GPUs, storage, network, platform, virtualization and confidential-computing indicators) and the scan is submitted.
-3. The platform computes a **price range** for the resources the provider chooses to offer, from an operator-configured rate card.
-4. The provider lists the machine at **any price inside that range**. Outside the range is rejected server-side.
+2. The provider installs the Auren agent and enrols it with a one-time token. The **platform** then scans the device: the provider only requests a scan; the agent answers challenges our servers generate and time (see [SCAN.md](SCAN.md)). Providers cannot type in hardware facts.
+3. The platform computes a **price range** for the resources the provider chooses to offer, from an operator-configured rate card, separately per tier.
+4. The provider lists the machine in the **Standard** tier (cheaper, no confidentiality guarantee against the provider) or the **Confidential** tier (more expensive; attested hosts only) at **any price inside that range**. Outside the range is rejected server-side.
 5. The provider can pause, resume or withdraw at any time.
 
-Scans are **self-reported** until benchmark verification exists (ROADMAP M2). Pricing and listings are implemented; matching buyers to listings is not.
+Today only the CPU speed is measured by the platform; the hardware facts are read by the agent and are evidence, not proof (SCAN.md ranks each claim). The Confidential tier exists in pricing and rules, but no machine can qualify until platform attestation is built. Matching buyers to listings is not implemented.
 
 ## Implemented now
 
 - API: `/health/live`, `/health/ready`, `GET /v1/me` (Clerk-authenticated, provisions the user).
-- API: self-service provider role, machine registration, scan intake, server-side price range, listing at a price inside the range, pause/resume/withdraw.
-- Provider agent: development mode that detects CPU, memory, NVIDIA GPUs, storage, platform/KVM, confidential-computing CPU flags and network interfaces (`scan`, `run`).
+- API: self-service provider role, machine registration, agent enrolment, signed agent protocol, platform-run scans with a server-timed CPU benchmark, server-side price range per tier, listing at a price inside the range, pause/resume/withdraw.
+- Provider agent: hardware detection (CPU, memory, NVIDIA GPUs, storage, platform/KVM, confidential-computing CPU flags, network interfaces) and the control-plane commands `enroll` and `run-scan`; no workload execution.
 - Frontend: public home page, Clerk sign-in, protected dashboard that shows the caller's roles.
 
 ## Privacy goal and its honest limits

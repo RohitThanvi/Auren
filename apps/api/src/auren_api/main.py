@@ -25,11 +25,13 @@ from auren_api.errors import register_error_handlers
 from auren_api.infrastructure.database import create_engine, create_session_factory
 from auren_api.infrastructure.rate_limit import RedisRateLimiter, rules_from_settings
 from auren_api.infrastructure.redis import create_redis
+from auren_api.infrastructure.replay import RedisNonceStore
 from auren_api.logging import configure_logging
 
 logger = structlog.get_logger(__name__)
 
 RATE_LIMIT_KEY_PREFIX = "auren:ratelimit"
+AGENT_NONCE_KEY_PREFIX = "auren:agent-nonce"
 
 
 def _build_container(settings: Settings) -> Container:
@@ -56,6 +58,7 @@ def _build_container(settings: Settings) -> Container:
         ),
         rate_limiter=RedisRateLimiter(redis, rules_from_settings(settings), RATE_LIMIT_KEY_PREFIX),
         provider_policy=provider_policy_from_settings(settings),
+        nonce_store=RedisNonceStore(redis, AGENT_NONCE_KEY_PREFIX),
     )
 
 

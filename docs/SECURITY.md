@@ -7,7 +7,7 @@
 | Anonymous internet user | Brute force, scraping, request floods | Redis rate limits per IP; body size cap; deny-by-default auth. **Implemented.** |
 | Authenticated buyer | Access another user's data (IDOR/BOLA) | Authorisation from stored roles; ownership checks required on every resource query. **Pattern defined; no user-owned resources exist yet.** |
 | Malicious buyer workload | Escape sandbox, attack host or other tenants | Not applicable until workloads exist. Design requirements below. **Not implemented.** |
-| Malicious or curious provider | Read the buyer's code, data and results; tamper with results; lie about hardware; abandon sessions | Not mitigated today (no workloads exist). Reading buyer data cannot be prevented by containers or microVMs: see the next section. Scans are labelled `self_reported`; benchmark verification, attestation and redundancy are planned. |
+| Malicious or curious provider | Read the buyer's code, data and results; tamper with results; lie about hardware; abandon sessions | Not mitigated today (no workloads exist). Reading buyer data cannot be prevented by containers or microVMs: see the next section. Scans run through the platform's enrolled agent with a server-timed benchmark (SCAN.md); attestation, deeper verification and redundancy are planned. |
 | Network attacker | Token theft, tampering | TLS required at the edge; HSTS in production; bearer tokens short-lived (Clerk). |
 | Compromised frontend (XSS) | Token theft | No `dangerouslySetInnerHTML` (ESLint-enforced); React escaping; CSP pending (see limitations). |
 
@@ -37,7 +37,9 @@ Deny by default. Roles live in `user_roles`, never in token claims (a test asser
 - Rate limits: configurable per policy via `AUREN_RATE_LIMIT_*`; 429 with `Retry-After`; fail-closed when Redis is down unless `AUREN_RATE_LIMIT_FAIL_OPEN=true`. Client IP honours `X-Forwarded-For` only up to `AUREN_TRUSTED_PROXY_COUNT`.
 - API container runs as non-root, read-only filesystem, all capabilities dropped.
 
-## Host-agent security (requirements; agent currently makes no network calls)
+## Host-agent security
+
+Implemented: per-machine Ed25519 identity, signed requests with replay protection, one-time enrolment, key file permissions enforced, https required for non-loopback control planes, collection limited to the fields listed in [SCAN.md](SCAN.md). Requirements still to meet when workloads exist:
 
 - Outbound authenticated TLS only; no inbound ports on provider machines.
 - The agent exposes no generic execution; the backend can request only typed, allow-listed operations.
@@ -77,8 +79,9 @@ Only the Clerk subject is stored per user (no email, name or payment data). Card
 - The `AUTH` rate-limit policy protects only `POST /v1/provider/enable`; the other reserved policies (`ticket_creation`, `session_creation`, `upload`, `expensive`) are configurable but not yet attached to endpoints; failed-authentication throttling is not implemented.
 - Fixed-window limiting allows up to 2x burst across a window boundary.
 - Providers are self-service by design (ADR-0014), so there is no vetting: capacity claims are self-reported and unverified (price bands derived from a falsified scan would be wrong), and nothing stops one person registering many accounts. The `admin` role can only be granted directly in the database; there is no admin workflow.
-- A scan is submitted with the provider's own user session, not a per-machine credential, so the platform cannot yet tell a real agent from a hand-written request.
-- No benchmark verification, attestation, or result-integrity checking exists.
+- Scans are platform-run but only CPU speed is measured by us; cores, RAM, disk, GPU and network facts are agent-reported and can be falsified by a modified agent or a spoofed OS. The proxy attack (benchmark answered by a faster machine than the one sold) is open. Both are mitigated by the layers designed in [SCAN.md](SCAN.md), none yet built.
+- No attestation (TPM, SEV-SNP, TDX, GPU) and no result-integrity checking exists; the Confidential tier fails closed for every machine until the canary attestation is built.
+- The agent runs on demand (`run-scan`); there is no daemon, no heartbeat and no scheduled rescans.
 - The frontend ships no Content-Security-Policy yet: Clerk requires allow-listing the instance's frontend API domain, which must be done per deployment.
 - The Docker/Compose stack and CI workflows have not been executed in the authoring environment (no Docker, push token lacked `workflow` scope).
 - No dependency vulnerability scanning in CI yet.

@@ -5,13 +5,13 @@
 ```
 Browser (apps/web) --HTTPS, Bearer Clerk JWT--> API (apps/api) --> PostgreSQL
                                                   |  \--> Redis (rate limits)
-Provider host (apps/agent) --outbound TLS--> API   (protocol: NOT YET IMPLEMENTED)
+Provider host (apps/agent) --outbound HTTPS, Ed25519-signed requests--> API   (enrol + scan implemented)
 ```
 
 | Component | Path | State |
 | --- | --- | --- |
 | API (modular monolith, FastAPI) | `apps/api` | Foundation implemented |
-| Provider agent (Python) | `apps/agent` | Hardware inventory only; no network, no workloads |
+| Provider agent (Python) | `apps/agent` | Hardware scan, enrolment, signed scan protocol; no workloads |
 | Web (React, Vite) | `apps/web` | Home, sign-in, dashboard |
 | Shared contracts | `packages/contracts` | Types generated from the API's OpenAPI document |
 | Dev infrastructure | `docker-compose.yml`, `infra/` | PostgreSQL, Redis, migrations, API |
@@ -38,8 +38,11 @@ Dependencies point inward (api -> services -> repositories -> models/domain). Th
 
 - `domain/inventory.py`: `InventorySnapshot` and `check_allocatable` (an offer must fit inside the scanned machine, capped at `AUREN_PROVIDER_MAX_ALLOCATABLE_BPS` of CPU, memory and storage; GPUs are selected by index).
 - `domain/pricing.py`: `price_range` from a `RateCard` (per core-hour, GiB-hour of memory, GiB-hour of GPU VRAM, 100 GiB-hour of storage), floor and ceiling in basis points. Integer arithmetic only; partial GiB are not billed.
-- `domain/machine.py`: `registered -> listed <-> paused`, any non-withdrawn state `-> withdrawn` (terminal).
-- Scans are append-only rows; the newest is current. A new scan that no longer supports an existing listing (capacity or price band) pauses the machine automatically.
+- `domain/machine.py`: `registered -> listed <-> paused`, any non-withdrawn state `-> withdrawn` (terminal); `ListingTier` (standard, confidential).
+- `domain/scan.py`: scan challenge (SHA-256 chain) and the speed derived from server-measured time.
+- `auth/agent.py`: request signing, canonical message, weak-key rejection. `api/deps.get_agent_principal` authenticates agent requests (signature, skew, single-use nonce).
+- `services/agent.py`: enrolment, claim, verified result intake. `services/listing_rules.py`: rules shared by the provider and agent services.
+- Inventories exist only as the result of a completed platform scan (append-only; the newest is current). A new scan that no longer supports an existing listing (capacity, price band or tier requirements) pauses the machine automatically. Full scan design: [SCAN.md](SCAN.md).
 - Every machine query is scoped by `owner_user_id`; another user's machine returns the same 404 as a missing one.
 - Machine mutations lock the machine row (`SELECT ... FOR UPDATE`); the per-provider machine limit locks the owner row so concurrent creates cannot exceed it.
 
@@ -71,7 +74,7 @@ Authorisation is separate: `require_roles(...)` denies unless the stored roles i
 
 These sections describe intended design so contributors build toward one model. None of it exists in code yet.
 
-- **Provider agent communication:** agent opens an outbound mTLS/TLS WebSocket or gRPC stream to the API; registration uses a one-time enrolment token exchanged for a per-machine credential; every command is a typed, allow-listed message (never a shell string). The message schema will be defined by the backend owner in `docs/` before either side implements it.
+- **Provider agent communication, remaining parts:** today the agent polls over signed HTTPS (claim a scan, submit a result). Workload commands (start/stop sandbox, usage reports) and a push channel (WebSocket or gRPC stream) are not implemented; every command must remain a typed, allow-listed message, never a shell string, with the schema defined by the backend owner in `docs/` first.
 - **Execution lifecycle:** requested -> matched -> provisioning -> running -> terminating -> terminated/failed, persisted with explicit state-transition rules and a unique active allocation per resource.
 - **Queue architecture:** tickets for unmatched requests, queue positions with estimates only (no guarantee), offers with expiry that a buyer accepts or rejects; allocation in a single database transaction with row locking.
 - **Billing architecture:** append-only double-entry wallet ledger in integer minor units, usage metering records, gateway transactions behind `PaymentProvider`, idempotency keys, signed-webhook verification, duplicate-event handling, refunds, provider settlements, platform commission, reconciliation. Invariants in [DATABASE.md](DATABASE.md).

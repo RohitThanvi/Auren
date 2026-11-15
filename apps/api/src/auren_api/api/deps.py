@@ -1,5 +1,6 @@
 """FastAPI dependency providers: infrastructure access, authentication, authorization, limits."""
 
+import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Annotated
 
@@ -10,9 +11,23 @@ from redis.exceptions import RedisError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from auren_api.api.client_ip import resolve_client_ip
+from auren_api.auth.agent import (
+    HEADER_MACHINE_ID,
+    HEADER_NONCE,
+    HEADER_SIGNATURE,
+    HEADER_TIMESTAMP,
+    NONCE_PATTERN,
+    SIGNATURE_BYTES,
+    AgentPrincipal,
+    b64url_decode,
+    canonical_message,
+    verify_signature,
+)
 from auren_api.auth.clerk import JwksUnavailableError, TokenVerificationError
 from auren_api.auth.principal import Principal
 from auren_api.container import Container
+from auren_api.domain.clock import utcnow
+from auren_api.domain.machine import MachineStatus
 from auren_api.domain.roles import Role
 from auren_api.errors import (
     ForbiddenError,
@@ -21,6 +36,8 @@ from auren_api.errors import (
     UnauthorizedError,
 )
 from auren_api.infrastructure.rate_limit import RateLimitPolicy
+from auren_api.repositories.agents import AgentRepository
+from auren_api.services.agent import AgentService
 from auren_api.services.provider import ProviderService
 from auren_api.services.users import UserService
 
@@ -118,5 +135,89 @@ def limit_by_user(policy: RateLimitPolicy) -> Callable[[Principal, Container], A
 
     async def dependency(principal: PrincipalDep, container: ContainerDep) -> None:
         await _enforce(container, policy, f"user:{principal.user_id}")
+
+    return dependency  # pyright: ignore[reportReturnType]
+
+
+def get_agent_service(container: ContainerDep, session: SessionDep) -> AgentService:
+    return AgentService(session, container.provider_policy)
+
+
+AgentServiceDep = Annotated[AgentService, Depends(get_agent_service)]
+
+_AGENT_SCHEME = "Auren-Signature"
+_MAX_TIMESTAMP_DIGITS = 12
+
+
+def _agent_unauthorized(reason: str) -> UnauthorizedError:
+    logger.info("agent_authentication_failed", reason=reason)
+    return UnauthorizedError("Invalid agent credentials.", scheme=_AGENT_SCHEME)
+
+
+async def get_agent_principal(
+    request: Request, container: ContainerDep, session: SessionDep
+) -> AgentPrincipal:
+    """Authenticate a signed agent request (signature, freshness, single-use nonce)."""
+    machine_header = request.headers.get(HEADER_MACHINE_ID)
+    timestamp_header = request.headers.get(HEADER_TIMESTAMP)
+    nonce = request.headers.get(HEADER_NONCE)
+    signature_header = request.headers.get(HEADER_SIGNATURE)
+    if not (machine_header and timestamp_header and nonce and signature_header):
+        raise _agent_unauthorized("missing_header")
+    try:
+        machine_id = uuid.UUID(machine_header)
+        signature = b64url_decode(signature_header)
+    except ValueError:
+        raise _agent_unauthorized("malformed_header") from None
+    if (
+        not timestamp_header.isdigit()
+        or len(timestamp_header) > _MAX_TIMESTAMP_DIGITS
+        or not NONCE_PATTERN.match(nonce)
+        or len(signature) != SIGNATURE_BYTES
+    ):
+        raise _agent_unauthorized("malformed_header")
+
+    timestamp = int(timestamp_header)
+    max_skew = container.settings.agent_request_max_skew_seconds
+    if abs(utcnow().timestamp() - timestamp) > max_skew:
+        raise _agent_unauthorized("stale_timestamp")
+
+    identity = await AgentRepository(session).identity(machine_id)
+    if identity is None or identity.machine_status is MachineStatus.WITHDRAWN:
+        raise _agent_unauthorized("unknown_machine")
+    message = canonical_message(
+        method=request.method,
+        path=request.url.path,
+        machine_id=str(machine_id),
+        timestamp=timestamp,
+        nonce=nonce,
+        body=await request.body(),
+    )
+    if not verify_signature(identity.public_key, signature, message):
+        raise _agent_unauthorized("bad_signature")
+
+    # The nonce is recorded only after the signature is valid, so unsigned junk cannot fill Redis.
+    try:
+        fresh = await container.nonce_store.claim(machine_id, nonce, 2 * max_skew)
+    except RedisError as exc:
+        logger.error("nonce_store_unavailable", error=type(exc).__name__)
+        raise ServiceUnavailableError from exc
+    if not fresh:
+        raise _agent_unauthorized("replayed_nonce")
+
+    structlog.contextvars.bind_contextvars(machine_id=str(machine_id))
+    return AgentPrincipal(machine_id=machine_id, owner_user_id=identity.owner_user_id)
+
+
+AgentDep = Annotated[AgentPrincipal, Depends(get_agent_principal)]
+
+
+def limit_by_machine(
+    policy: RateLimitPolicy,
+) -> Callable[[AgentPrincipal, Container], Awaitable[None]]:
+    """Rate limit by authenticated machine. Use for agent endpoints."""
+
+    async def dependency(agent: AgentDep, container: ContainerDep) -> None:
+        await _enforce(container, policy, f"machine:{agent.machine_id}")
 
     return dependency  # pyright: ignore[reportReturnType]

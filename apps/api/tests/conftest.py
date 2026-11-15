@@ -17,7 +17,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import make_url
 
 from auren_api.auth.clerk import ClerkTokenVerifier
-from auren_api.config import Environment, Settings, get_settings
+from auren_api.config import Environment, RateLimitRule, Settings, get_settings
 from auren_api.main import create_app
 from tests.support import AUTHORIZED_PARTY, ISSUER, PRICING, TokenFactory
 
@@ -77,6 +77,9 @@ def make_settings(database_url: str, redis_url: str) -> Callable[..., Settings]:
             "cors_allowed_origins": [AUTHORIZED_PARTY],
             "log_level": "WARNING",
             **PRICING,
+            "scan_cpu_iterations": 2_000,
+            # Tests drive many scans per user; dedicated tests exercise the strict limit.
+            "rate_limit_expensive": RateLimitRule(limit=1_000, window_seconds=60),
             **overrides,
         }
         return Settings(**values)  # pyright: ignore[reportArgumentType]

@@ -4,68 +4,29 @@ import asyncio
 import json
 import uuid
 from collections.abc import Callable
-from pathlib import Path
 from typing import Any
 
-import httpx
 from sqlalchemy import text
 
 from auren_api.config import RateLimitRule, Settings
 from tests.conftest import ClientHandle
-from tests.support import TokenFactory
-
-GIB = 1024**3
-EXAMPLE = json.loads(
-    (Path(__file__).resolve().parents[3] / "packages/contracts/examples/inventory.json").read_text()
+from tests.flows import (
+    CEILING,
+    EXAMPLE,
+    FLOOR,
+    GIB,
+    OFFER,
+    auth,
+    enrolled_agent,
+    listing,
+    machine,
+    provider,
+    put_listing,
+    run_scan,
+    scanned_machine,
+    set_db,
 )
-# Example machine: 32 cores, 64 GiB RAM, one 24 GiB GPU, 1000 GiB storage.
-# Rates in tests/support.py -> base for the offer below is 9800; band is 6860..14700.
-OFFER: dict[str, Any] = {
-    "cpu_cores": 8,
-    "memory_bytes": 16 * GIB,
-    "gpu_indices": [0],
-    "storage_bytes": 200 * GIB,
-}
-FLOOR, CEILING = 6860, 14700
-
-
-def auth(tokens: TokenFactory, subject: str) -> dict[str, str]:
-    return {"Authorization": f"Bearer {tokens.token(subject)}"}
-
-
-async def provider(api: ClientHandle, tokens: TokenFactory, subject: str) -> dict[str, str]:
-    headers = auth(tokens, subject)
-    response = await api.client.post("/v1/provider/enable", headers=headers)
-    assert response.status_code == 200, response.text
-    return headers
-
-
-async def machine(api: ClientHandle, headers: dict[str, str], name: str = "rig-1") -> str:
-    response = await api.client.post("/v1/provider/machines", json={"name": name}, headers=headers)
-    assert response.status_code == 201, response.text
-    return response.json()["id"]
-
-
-async def scanned_machine(api: ClientHandle, headers: dict[str, str], name: str = "rig-1") -> str:
-    machine_id = await machine(api, headers, name)
-    response = await api.client.put(
-        f"/v1/provider/machines/{machine_id}/inventory", json=EXAMPLE, headers=headers
-    )
-    assert response.status_code == 200, response.text
-    return machine_id
-
-
-def listing(price: int, **overrides: Any) -> dict[str, Any]:
-    return {**OFFER, "price_per_hour_minor": price, "max_hosting_hours": 24, **overrides}
-
-
-async def put_listing(
-    api: ClientHandle, headers: dict[str, str], machine_id: str, body: dict[str, Any]
-) -> httpx.Response:
-    return await api.client.put(
-        f"/v1/provider/machines/{machine_id}/listing", json=body, headers=headers
-    )
-
+from tests.support import TokenFactory
 
 # --- enrolment ------------------------------------------------------------------------------
 
@@ -187,14 +148,16 @@ async def test_other_providers_machines_are_invisible_everywhere(
 ) -> None:
     alice = await provider(api, tokens, "user_owner")
     mallory = await provider(api, tokens, "user_mallory")
-    machine_id = await scanned_machine(api, alice)
+    machine_id, _ = await scanned_machine(api, alice)
     assert (await put_listing(api, alice, machine_id, listing(10000))).status_code == 200
     base = f"/v1/provider/machines/{machine_id}"
 
     attempts = [
         api.client.get(base, headers=mallory),
-        api.client.put(f"{base}/inventory", json=EXAMPLE, headers=mallory),
-        api.client.post(f"{base}/price-range", json=OFFER, headers=mallory),
+        api.client.post(f"{base}/enrollment", headers=mallory),
+        api.client.post(f"{base}/scans", headers=mallory),
+        api.client.get(f"{base}/scans/{uuid.uuid4()}", headers=mallory),
+        api.client.post(f"{base}/price-range", json={**OFFER, "tier": "standard"}, headers=mallory),
         api.client.put(f"{base}/listing", json=listing(10000), headers=mallory),
         api.client.post(f"{base}/pause", headers=mallory),
         api.client.post(f"{base}/resume", headers=mallory),
@@ -215,30 +178,7 @@ async def test_other_providers_machines_are_invisible_everywhere(
     assert unknown.json()["error"]["message"] == foreign.json()["error"]["message"]
 
 
-# --- inventory ------------------------------------------------------------------------------
-
-
-async def test_the_shared_contract_example_is_accepted(
-    api: ClientHandle, tokens: TokenFactory
-) -> None:
-    headers = await provider(api, tokens, "user_inv")
-    machine_id = await machine(api, headers)
-    response = await api.client.put(
-        f"/v1/provider/machines/{machine_id}/inventory", json=EXAMPLE, headers=headers
-    )
-    body = response.json()
-    assert response.status_code == 200
-    assert body["listing_paused"] is False
-    summary = body["inventory"]
-    assert (summary["logical_cores"], summary["gpu_count"], summary["kvm_available"]) == (
-        32,
-        1,
-        True,
-    )
-    assert summary["confidential_computing_flags"] == ["sev", "sev_es", "sev_snp"]
-    assert summary["verification"] == "self_reported"
-    detail = (await api.client.get(f"/v1/provider/machines/{machine_id}", headers=headers)).json()
-    assert detail["inventory"]["id"] == summary["id"]
+# --- platform scan results ------------------------------------------------------------------
 
 
 def mutated(path: list[str], value: Any) -> dict[str, Any]:
@@ -250,47 +190,51 @@ def mutated(path: list[str], value: Any) -> dict[str, Any]:
     return body
 
 
-async def test_invalid_scan_reports_are_rejected(api: ClientHandle, tokens: TokenFactory) -> None:
-    headers = await provider(api, tokens, "user_bad_scan")
-    machine_id = await machine(api, headers)
-    bad_bodies = [
-        mutated(["cpu", "logical_cores"], 0),
-        mutated(["cpu", "logical_cores"], 10**9),
-        mutated(["cpu", "physical_cores"], 64),
-        mutated(["cpu", "model_name"], "evil\nmodel"),
-        mutated(["cpu", "confidential_computing_flags"], ["quantum"]),
-        mutated(["memory", "available_bytes"], 10**15),
-        mutated(["memory", "total_bytes"], 2**60),
-        mutated(["storage", "free_bytes"], 10**15),
-        mutated(["gpus"], [EXAMPLE["gpus"][0]] * 17),
-        mutated(["platform", "unexpected"], "field"),
-        mutated(["network"], [{"name": "eth0", "speed_mbps": -5, "is_up": True}]),
-        {k: v for k, v in EXAMPLE.items() if k != "memory"},
-        {**EXAMPLE, "extra": 1},
-    ]
-    for body in bad_bodies:
-        response = await api.client.put(
-            f"/v1/provider/machines/{machine_id}/inventory", json=body, headers=headers
-        )
-        assert response.status_code == 422, body
+async def test_machine_detail_shows_the_platform_scan(
+    api: ClientHandle, tokens: TokenFactory
+) -> None:
+    headers = await provider(api, tokens, "user_inv")
+    machine_id, agent = await scanned_machine(api, headers)
     detail = (await api.client.get(f"/v1/provider/machines/{machine_id}", headers=headers)).json()
-    assert detail["inventory"] is None  # nothing from a rejected scan is stored
+    inventory = detail["inventory"]
+    assert (inventory["logical_cores"], inventory["gpu_count"], inventory["kvm_available"]) == (
+        32,
+        1,
+        True,
+    )
+    assert inventory["confidential_computing_flags"] == ["sev", "sev_es", "sev_snp"]
+    assert inventory["cpu_hashes_per_second"] > 0
+    assert inventory["verification"] == "agent_scanned"
+    assert detail["confidential_verified"] is False
+    assert agent.machine_id == machine_id
 
 
 async def test_every_scan_is_kept_and_the_latest_is_current(
     api: ClientHandle, tokens: TokenFactory
 ) -> None:
     headers = await provider(api, tokens, "user_history")
-    machine_id = await scanned_machine(api, headers)
+    machine_id, agent = await scanned_machine(api, headers)
     upgraded = mutated(["cpu", "logical_cores"], 64)
-    await api.client.put(
-        f"/v1/provider/machines/{machine_id}/inventory", json=upgraded, headers=headers
-    )
+    assert (await run_scan(api, headers, agent, upgraded)).status_code == 200
     detail = (await api.client.get(f"/v1/provider/machines/{machine_id}", headers=headers)).json()
     assert detail["inventory"]["logical_cores"] == 64
     async with api.app.state.container.engine.connect() as connection:
         rows = await connection.scalar(text("SELECT count(*) FROM machine_inventories"))
     assert rows == 2
+
+
+async def test_providers_cannot_submit_hardware_facts_themselves(
+    api: ClientHandle, tokens: TokenFactory
+) -> None:
+    headers = await provider(api, tokens, "user_no_self_report")
+    machine_id = await machine(api, headers)
+    for method in ("put", "post"):
+        response = await getattr(api.client, method)(
+            f"/v1/provider/machines/{machine_id}/inventory", json=EXAMPLE, headers=headers
+        )
+        assert response.status_code in {404, 405}
+    detail = (await api.client.get(f"/v1/provider/machines/{machine_id}", headers=headers)).json()
+    assert detail["inventory"] is None
 
 
 # --- pricing and listing --------------------------------------------------------------------
@@ -300,9 +244,11 @@ async def test_price_range_is_computed_by_the_server(
     api: ClientHandle, tokens: TokenFactory
 ) -> None:
     headers = await provider(api, tokens, "user_range")
-    machine_id = await scanned_machine(api, headers)
+    machine_id, _ = await scanned_machine(api, headers)
     response = await api.client.post(
-        f"/v1/provider/machines/{machine_id}/price-range", json=OFFER, headers=headers
+        f"/v1/provider/machines/{machine_id}/price-range",
+        json={**OFFER, "tier": "standard"},
+        headers=headers,
     )
     assert response.status_code == 200
     assert response.json() == {
@@ -317,29 +263,36 @@ async def test_price_range_requires_a_scan_and_a_feasible_offer(
 ) -> None:
     headers = await provider(api, tokens, "user_range_errors")
     unscanned = await machine(api, headers, "empty")
+    body = {**OFFER, "tier": "standard"}
     response = await api.client.post(
-        f"/v1/provider/machines/{unscanned}/price-range", json=OFFER, headers=headers
+        f"/v1/provider/machines/{unscanned}/price-range", json=body, headers=headers
     )
     assert (response.status_code, response.json()["error"]["code"]) == (422, "inventory_required")
 
-    scanned = await scanned_machine(api, headers, "full")
-    too_big = {**OFFER, "cpu_cores": 32}
+    scanned, _ = await scanned_machine(api, headers, "full")
     response = await api.client.post(
-        f"/v1/provider/machines/{scanned}/price-range", json=too_big, headers=headers
+        f"/v1/provider/machines/{scanned}/price-range",
+        json={**body, "cpu_cores": 32},
+        headers=headers,
     )
     assert response.json()["error"]["code"] == "allocation_exceeds_capacity"
+    missing_tier = await api.client.post(
+        f"/v1/provider/machines/{scanned}/price-range", json=OFFER, headers=headers
+    )
+    assert missing_tier.status_code == 422
 
 
 async def test_a_provider_can_choose_any_price_inside_the_range(
     api: ClientHandle, tokens: TokenFactory
 ) -> None:
     headers = await provider(api, tokens, "user_market")
-    machine_id = await scanned_machine(api, headers)
+    machine_id, _ = await scanned_machine(api, headers)
     for price in (FLOOR, 9800, CEILING, FLOOR + 1):
         response = await put_listing(api, headers, machine_id, listing(price))
         assert response.status_code == 200, (price, response.text)
         body = response.json()
         assert body["status"] == "listed"
+        assert body["listing"]["tier"] == "standard"
         assert body["listing"]["price_per_hour"] == {"amount_minor": price, "currency": "INR"}
         assert body["listing"]["gpu_indices"] == [0]
 
@@ -348,7 +301,7 @@ async def test_prices_outside_the_range_are_rejected(
     api: ClientHandle, tokens: TokenFactory
 ) -> None:
     headers = await provider(api, tokens, "user_outside")
-    machine_id = await scanned_machine(api, headers)
+    machine_id, _ = await scanned_machine(api, headers)
     for price in (FLOOR - 1, CEILING + 1, 1, 10**9):
         response = await put_listing(api, headers, machine_id, listing(price))
         assert response.status_code == 422
@@ -361,7 +314,7 @@ async def test_prices_must_be_whole_positive_numbers(
     api: ClientHandle, tokens: TokenFactory
 ) -> None:
     headers = await provider(api, tokens, "user_price_types")
-    machine_id = await scanned_machine(api, headers)
+    machine_id, _ = await scanned_machine(api, headers)
     for price in (0, -5, 99.5, "9800"):
         response = await put_listing(api, headers, machine_id, listing(price))  # type: ignore[arg-type]
         assert response.status_code == 422, price
@@ -374,7 +327,7 @@ async def test_listing_rules_beyond_price(api: ClientHandle, tokens: TokenFactor
         "code"
     ] == "inventory_required"
 
-    machine_id = await scanned_machine(api, headers)
+    machine_id, _ = await scanned_machine(api, headers)
     cases = {
         "max_hosting_hours_exceeded": listing(9800, max_hosting_hours=100_000),
         "allocation_exceeds_capacity": listing(9800, gpu_indices=[3]),
@@ -384,6 +337,98 @@ async def test_listing_rules_beyond_price(api: ClientHandle, tokens: TokenFactor
         assert (response.status_code, response.json()["error"]["code"]) == (422, code)
     duplicate_gpu = await put_listing(api, headers, machine_id, listing(9800, gpu_indices=[0, 0]))
     assert duplicate_gpu.json()["error"]["code"] == "allocation_exceeds_capacity"
+    bad_tier = await put_listing(api, headers, machine_id, listing(9800, tier="premium"))
+    assert bad_tier.status_code == 422
+
+
+# --- tiers ----------------------------------------------------------------------------------
+
+NO_GPU: dict[str, Any] = {**OFFER, "gpu_indices": []}
+# Standard base 2600 (floor 1820, ceiling 3900); confidential base 3900 (floor 2730, ceiling 5850).
+
+
+async def test_confidential_prices_are_higher_than_standard_for_the_same_offer(
+    api: ClientHandle, tokens: TokenFactory
+) -> None:
+    headers = await provider(api, tokens, "user_tiers")
+    machine_id, _ = await scanned_machine(api, headers)
+    path = f"/v1/provider/machines/{machine_id}/price-range"
+    standard = (
+        await api.client.post(path, json={**NO_GPU, "tier": "standard"}, headers=headers)
+    ).json()
+    await set_db(api, "UPDATE machines SET confidential_verified_at = now()")
+    confidential = (
+        await api.client.post(path, json={**NO_GPU, "tier": "confidential"}, headers=headers)
+    ).json()
+    assert standard["base"]["amount_minor"] == 2600
+    assert confidential["base"]["amount_minor"] == 3900
+    assert confidential["floor"]["amount_minor"] > standard["floor"]["amount_minor"]
+    assert confidential["ceiling"]["amount_minor"] > standard["ceiling"]["amount_minor"]
+
+
+async def test_confidential_listing_requires_platform_attestation(
+    api: ClientHandle, tokens: TokenFactory
+) -> None:
+    headers = await provider(api, tokens, "user_attest")
+    machine_id, _ = await scanned_machine(api, headers)
+    body = listing(3000, "confidential", gpu_indices=[])
+    denied = await put_listing(api, headers, machine_id, body)
+    assert (denied.status_code, denied.json()["error"]["code"]) == (422, "attestation_required")
+
+    await set_db(api, "UPDATE machines SET confidential_verified_at = now()")
+    detail = (await api.client.get(f"/v1/provider/machines/{machine_id}", headers=headers)).json()
+    assert detail["confidential_verified"] is True
+    accepted = await put_listing(api, headers, machine_id, body)
+    assert accepted.status_code == 200
+    assert accepted.json()["listing"]["tier"] == "confidential"
+    assert (
+        await put_listing(api, headers, machine_id, listing(1900, "confidential", gpu_indices=[]))
+    ).json()["error"][
+        "code"
+    ] == "price_out_of_range"  # 1900 is a valid standard price but below the confidential floor
+
+
+async def test_confidential_listing_cannot_include_gpus_yet(
+    api: ClientHandle, tokens: TokenFactory
+) -> None:
+    headers = await provider(api, tokens, "user_cc_gpu")
+    machine_id, _ = await scanned_machine(api, headers)
+    await set_db(api, "UPDATE machines SET confidential_verified_at = now()")
+    response = await put_listing(api, headers, machine_id, listing(9800, "confidential"))
+    assert response.json()["error"]["code"] == "confidential_gpu_unsupported"
+
+
+async def test_confidential_listing_requires_reported_hardware_support(
+    api: ClientHandle, tokens: TokenFactory
+) -> None:
+    headers = await provider(api, tokens, "user_cc_flags")
+    machine_id = await machine(api, headers)
+    agent = await enrolled_agent(api, headers, machine_id)
+    no_flags = mutated(["cpu", "confidential_computing_flags"], [])
+    assert (await run_scan(api, headers, agent, no_flags)).status_code == 200
+    await set_db(api, "UPDATE machines SET confidential_verified_at = now()")
+    response = await put_listing(
+        api, headers, machine_id, listing(3000, "confidential", gpu_indices=[])
+    )
+    assert response.json()["error"]["code"] == "confidential_not_supported"
+
+
+async def test_a_rescan_that_loses_confidential_support_pauses_the_listing(
+    api: ClientHandle, tokens: TokenFactory
+) -> None:
+    headers = await provider(api, tokens, "user_cc_lost")
+    machine_id, agent = await scanned_machine(api, headers)
+    await set_db(api, "UPDATE machines SET confidential_verified_at = now()")
+    await put_listing(api, headers, machine_id, listing(3000, "confidential", gpu_indices=[]))
+    result = await run_scan(
+        api, headers, agent, mutated(["cpu", "confidential_computing_flags"], [])
+    )
+    assert result.json()["listing_paused"] is True
+    base = f"/v1/provider/machines/{machine_id}"
+    assert (await api.client.get(base, headers=headers)).json()["status"] == "paused"
+    assert (await api.client.post(f"{base}/resume", headers=headers)).json()["error"][
+        "code"
+    ] == "confidential_not_supported"
 
 
 # --- lifecycle ------------------------------------------------------------------------------
@@ -391,7 +436,7 @@ async def test_listing_rules_beyond_price(api: ClientHandle, tokens: TokenFactor
 
 async def test_pause_resume_withdraw_lifecycle(api: ClientHandle, tokens: TokenFactory) -> None:
     headers = await provider(api, tokens, "user_life")
-    machine_id = await scanned_machine(api, headers)
+    machine_id, agent = await scanned_machine(api, headers)
     base = f"/v1/provider/machines/{machine_id}"
 
     resume_early = await api.client.post(f"{base}/resume", headers=headers)
@@ -412,28 +457,30 @@ async def test_pause_resume_withdraw_lifecycle(api: ClientHandle, tokens: TokenF
         await api.client.post(f"{base}/pause", headers=headers),
         await api.client.post(f"{base}/withdraw", headers=headers),
         await put_listing(api, headers, machine_id, listing(9800)),
+        await api.client.post(f"{base}/enrollment", headers=headers),
+        await api.client.post(f"{base}/scans", headers=headers),
     ):
         assert response.status_code == 409
-    scan = await api.client.put(f"{base}/inventory", json=EXAMPLE, headers=headers)
-    assert (scan.status_code, scan.json()["error"]["code"]) == (409, "machine_withdrawn")
     assert (await api.client.get(base, headers=headers)).json()["listing"] is not None
+    # a withdrawn machine's agent is locked out
+    assert (await agent.claim()).status_code == 401
 
 
 async def test_a_smaller_rescan_pauses_a_listing_that_no_longer_fits(
     api: ClientHandle, tokens: TokenFactory
 ) -> None:
     headers = await provider(api, tokens, "user_downgrade")
-    machine_id = await scanned_machine(api, headers)
+    machine_id, agent = await scanned_machine(api, headers)
     await put_listing(api, headers, machine_id, listing(9800))
     base = f"/v1/provider/machines/{machine_id}"
 
-    same = await api.client.put(f"{base}/inventory", json=EXAMPLE, headers=headers)
+    same = await run_scan(api, headers, agent)
     assert same.json()["listing_paused"] is False
     assert (await api.client.get(base, headers=headers)).json()["status"] == "listed"
 
     smaller = mutated(["cpu", "logical_cores"], 4)  # cannot supply 8 cores any more
     smaller["cpu"]["physical_cores"] = 4
-    result = await api.client.put(f"{base}/inventory", json=smaller, headers=headers)
+    result = await run_scan(api, headers, agent, smaller)
     assert result.json()["listing_paused"] is True
     assert (await api.client.get(base, headers=headers)).json()["status"] == "paused"
     blocked = await api.client.post(f"{base}/resume", headers=headers)
@@ -447,10 +494,9 @@ async def test_a_rescan_that_changes_the_gpu_price_band_pauses_an_out_of_band_li
     api: ClientHandle, tokens: TokenFactory
 ) -> None:
     headers = await provider(api, tokens, "user_band")
-    machine_id = await scanned_machine(api, headers)
+    machine_id, agent = await scanned_machine(api, headers)
     await put_listing(api, headers, machine_id, listing(CEILING))
-    base = f"/v1/provider/machines/{machine_id}"
     body = json.loads(json.dumps(EXAMPLE))
     body["gpus"][0]["memory_total_bytes"] = 8 * GIB  # base falls, old ceiling price is too high
-    result = await api.client.put(f"{base}/inventory", json=body, headers=headers)
+    result = await run_scan(api, headers, agent, body)
     assert result.json()["listing_paused"] is True

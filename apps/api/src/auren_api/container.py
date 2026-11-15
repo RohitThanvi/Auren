@@ -10,6 +10,7 @@ from auren_api.auth.clerk import ClerkTokenVerifier
 from auren_api.config import Settings
 from auren_api.domain.provider_policy import ProviderPolicy
 from auren_api.infrastructure.rate_limit import RedisRateLimiter
+from auren_api.infrastructure.replay import RedisNonceStore
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,3 +23,4 @@ class Container:
     token_verifier: ClerkTokenVerifier
     rate_limiter: RedisRateLimiter
     provider_policy: ProviderPolicy
+    nonce_store: RedisNonceStore

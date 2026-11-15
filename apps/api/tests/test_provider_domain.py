@@ -1,8 +1,13 @@
 import pytest
 
 from auren_api.domain.errors import ConflictViolationError, RuleViolationError
-from auren_api.domain.inventory import Allocatable, InventorySnapshot, check_allocatable
-from auren_api.domain.machine import MachineStatus, require_transition
+from auren_api.domain.inventory import (
+    Allocatable,
+    InventorySnapshot,
+    check_allocatable,
+    check_tier,
+)
+from auren_api.domain.machine import ListingTier, MachineStatus, require_transition
 from auren_api.domain.money import Currency, Money
 from auren_api.domain.pricing import BYTES_PER_GIB, RateCard, price_range
 
@@ -15,6 +20,7 @@ RATES = RateCard(
     storage_100gib_hour=Money(100, INR),
     floor_bps=7000,
     ceiling_bps=15000,
+    confidential_premium_bps=15000,
 )
 SNAPSHOT = InventorySnapshot(
     logical_cores=32,
@@ -65,13 +71,15 @@ def test_range_contains_is_inclusive() -> None:
 
 
 def test_floor_is_never_below_one_minor_unit() -> None:
-    cheap = RateCard(Money(1, INR), Money(1, INR), Money(1, INR), Money(1, INR), 1, 15000)
+    cheap = RateCard(Money(1, INR), Money(1, INR), Money(1, INR), Money(1, INR), 1, 15000, 15000)
     band = price_range(cheap, SNAPSHOT, Allocatable(1, GIB // 2, (), 1))
     assert band.floor.amount_minor >= 1
 
 
 def test_unpriceable_offers_are_rejected() -> None:
-    zero_rates = RateCard(Money(0, INR), Money(0, INR), Money(0, INR), Money(0, INR), 7000, 15000)
+    zero_rates = RateCard(
+        Money(0, INR), Money(0, INR), Money(0, INR), Money(0, INR), 7000, 15000, 15000
+    )
     with pytest.raises(RuleViolationError):
         price_range(zero_rates, SNAPSHOT, offer())
 
@@ -126,3 +134,46 @@ def test_money_times() -> None:
     assert Money(25, INR).times(4) == Money(100, INR)
     with pytest.raises(ValueError, match="non-negative"):
         Money(25, INR).times(-1)
+
+
+def test_confidential_tier_costs_more_by_the_configured_premium() -> None:
+    standard = price_range(RATES, SNAPSHOT, offer())
+    confidential = price_range(RATES, SNAPSHOT, offer(), ListingTier.CONFIDENTIAL)
+    assert confidential.base == standard.base.apply_basis_points(15000)
+    assert confidential.floor.amount_minor > standard.floor.amount_minor
+    assert confidential.ceiling.amount_minor > standard.ceiling.amount_minor
+
+
+CONFIDENTIAL_HOST = InventorySnapshot(
+    logical_cores=32,
+    memory_total_bytes=64 * GIB,
+    storage_total_bytes=1000 * GIB,
+    gpu_memory_bytes=(24 * GIB,),
+    hardware_virtualization=True,
+    kvm_available=True,
+    confidential_computing_flags=("sev_snp",),
+)
+
+
+def test_standard_tier_has_no_extra_requirements() -> None:
+    check_tier(ListingTier.STANDARD, SNAPSHOT, offer(gpus=(0,)), confidential_verified=False)
+
+
+@pytest.mark.parametrize(
+    ("snapshot", "allocatable", "verified", "code"),
+    [
+        (SNAPSHOT, offer(), True, "confidential_not_supported"),
+        (CONFIDENTIAL_HOST, offer(), False, "attestation_required"),
+        (CONFIDENTIAL_HOST, offer(gpus=(0,)), True, "confidential_gpu_unsupported"),
+    ],
+)
+def test_confidential_tier_requirements(
+    snapshot: InventorySnapshot, allocatable: Allocatable, verified: bool, code: str
+) -> None:
+    with pytest.raises(RuleViolationError) as caught:
+        check_tier(ListingTier.CONFIDENTIAL, snapshot, allocatable, confidential_verified=verified)
+    assert caught.value.code == code
+
+
+def test_confidential_tier_is_allowed_on_a_verified_capable_gpu_free_offer() -> None:
+    check_tier(ListingTier.CONFIDENTIAL, CONFIDENTIAL_HOST, offer(), confidential_verified=True)

@@ -90,6 +90,8 @@ class Settings(BaseSettings):
     pricing_memory_gib_hour_minor: int = Field(gt=0)
     pricing_gpu_vram_gib_hour_minor: int = Field(gt=0)
     pricing_storage_100gib_hour_minor: int = Field(gt=0)
+    # Confidential-tier base price = standard base price x this factor (basis points, >= 100%).
+    pricing_confidential_premium_bps: int = Field(ge=10_000)
     # A provider may charge between floor and ceiling basis points of the computed base price.
     pricing_floor_bps: int = Field(gt=0, le=10_000)
     pricing_ceiling_bps: int = Field(ge=10_000)
@@ -97,6 +99,13 @@ class Settings(BaseSettings):
     provider_max_allocatable_bps: int = Field(default=9_000, gt=0, le=10_000)
     provider_max_machines: int = Field(default=20, gt=0)
     provider_max_hosting_hours: int = Field(default=720, gt=0)
+
+    # Platform-run device scans and machine (agent) authentication.
+    scan_ttl_seconds: int = Field(default=600, gt=0)
+    scan_result_deadline_seconds: int = Field(default=120, gt=0)
+    scan_cpu_iterations: int = Field(default=3_000_000, gt=0, le=100_000_000)
+    enrollment_ttl_seconds: int = Field(default=900, gt=0)
+    agent_request_max_skew_seconds: int = Field(default=60, gt=0, le=600)
 
     rate_limit_anonymous: RateLimitSetting = RateLimitRule(limit=60, window_seconds=60)
     rate_limit_authenticated: RateLimitSetting = RateLimitRule(limit=120, window_seconds=60)

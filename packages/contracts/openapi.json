@@ -1,6 +1,49 @@
 {
   "components": {
     "schemas": {
+      "AgentEnrollRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "enrollment_token": {
+            "maxLength": 128,
+            "minLength": 16,
+            "title": "Enrollment Token",
+            "type": "string"
+          },
+          "machine_id": {
+            "format": "uuid",
+            "title": "Machine Id",
+            "type": "string"
+          },
+          "public_key": {
+            "maxLength": 43,
+            "minLength": 43,
+            "title": "Public Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "machine_id",
+          "enrollment_token",
+          "public_key"
+        ],
+        "title": "AgentEnrollRequest",
+        "type": "object"
+      },
+      "AgentEnrollResponse": {
+        "properties": {
+          "machine_id": {
+            "format": "uuid",
+            "title": "Machine Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "machine_id"
+        ],
+        "title": "AgentEnrollResponse",
+        "type": "object"
+      },
       "AllocatableRequest": {
         "additionalProperties": false,
         "properties": {
@@ -29,9 +72,18 @@
             "minimum": 1.0,
             "title": "Storage Bytes",
             "type": "integer"
+          },
+          "tier": {
+            "enum": [
+              "standard",
+              "confidential"
+            ],
+            "title": "Tier",
+            "type": "string"
           }
         },
         "required": [
+          "tier",
           "cpu_cores",
           "memory_bytes",
           "gpu_indices",
@@ -128,6 +180,25 @@
         ],
         "title": "Currency",
         "type": "string"
+      },
+      "EnrollmentResponse": {
+        "properties": {
+          "enrollment_token": {
+            "title": "Enrollment Token",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "enrollment_token",
+          "expires_at"
+        ],
+        "title": "EnrollmentResponse",
+        "type": "object"
       },
       "ErrorBody": {
         "properties": {
@@ -237,23 +308,6 @@
         "title": "GpuReport",
         "type": "object"
       },
-      "InventoryAcceptedResponse": {
-        "properties": {
-          "inventory": {
-            "$ref": "#/components/schemas/InventorySummaryResponse"
-          },
-          "listing_paused": {
-            "title": "Listing Paused",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "inventory",
-          "listing_paused"
-        ],
-        "title": "InventoryAcceptedResponse",
-        "type": "object"
-      },
       "InventoryReport": {
         "additionalProperties": false,
         "properties": {
@@ -306,6 +360,10 @@
             "title": "Confidential Computing Flags",
             "type": "array"
           },
+          "cpu_hashes_per_second": {
+            "title": "Cpu Hashes Per Second",
+            "type": "integer"
+          },
           "gpu_count": {
             "title": "Gpu Count",
             "type": "integer"
@@ -336,20 +394,27 @@
             "title": "Received At",
             "type": "string"
           },
+          "scan_id": {
+            "format": "uuid",
+            "title": "Scan Id",
+            "type": "string"
+          },
           "storage_total_bytes": {
             "title": "Storage Total Bytes",
             "type": "integer"
           },
           "verification": {
-            "const": "self_reported",
-            "default": "self_reported",
+            "const": "agent_scanned",
+            "default": "agent_scanned",
             "title": "Verification",
             "type": "string"
           }
         },
         "required": [
           "id",
+          "scan_id",
           "received_at",
+          "cpu_hashes_per_second",
           "logical_cores",
           "memory_total_bytes",
           "storage_total_bytes",
@@ -400,9 +465,18 @@
             "minimum": 1.0,
             "title": "Storage Bytes",
             "type": "integer"
+          },
+          "tier": {
+            "enum": [
+              "standard",
+              "confidential"
+            ],
+            "title": "Tier",
+            "type": "string"
           }
         },
         "required": [
+          "tier",
           "cpu_cores",
           "memory_bytes",
           "gpu_indices",
@@ -440,9 +514,13 @@
           "storage_bytes": {
             "title": "Storage Bytes",
             "type": "integer"
+          },
+          "tier": {
+            "$ref": "#/components/schemas/ListingTier"
           }
         },
         "required": [
+          "tier",
           "price_per_hour",
           "cpu_cores",
           "memory_bytes",
@@ -452,6 +530,15 @@
         ],
         "title": "ListingResponse",
         "type": "object"
+      },
+      "ListingTier": {
+        "description": "Standard: no confidentiality guarantee against the provider. Confidential: attested hosts.",
+        "enum": [
+          "standard",
+          "confidential"
+        ],
+        "title": "ListingTier",
+        "type": "string"
       },
       "LiveResponse": {
         "properties": {
@@ -469,6 +556,10 @@
       },
       "MachineResponse": {
         "properties": {
+          "confidential_verified": {
+            "title": "Confidential Verified",
+            "type": "boolean"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -512,6 +603,7 @@
           "name",
           "status",
           "created_at",
+          "confidential_verified",
           "inventory",
           "listing"
         ],
@@ -721,6 +813,164 @@
         "title": "Role",
         "type": "string"
       },
+      "ScanChallengeResponse": {
+        "properties": {
+          "challenge": {
+            "title": "Challenge",
+            "type": "string"
+          },
+          "cpu_iterations": {
+            "title": "Cpu Iterations",
+            "type": "integer"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "scan_id": {
+            "format": "uuid",
+            "title": "Scan Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scan_id",
+          "challenge",
+          "cpu_iterations",
+          "expires_at"
+        ],
+        "title": "ScanChallengeResponse",
+        "type": "object"
+      },
+      "ScanResponse": {
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "cpu_hashes_per_second": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cpu Hashes Per Second"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "failure_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "expired",
+                  "benchmark_mismatch"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Reason"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "claimed",
+              "completed",
+              "failed",
+              "expired"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "failure_reason",
+          "created_at",
+          "expires_at",
+          "completed_at",
+          "cpu_hashes_per_second"
+        ],
+        "title": "ScanResponse",
+        "type": "object"
+      },
+      "ScanResultRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "cpu_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Cpu Digest",
+            "type": "string"
+          },
+          "report": {
+            "$ref": "#/components/schemas/InventoryReport"
+          }
+        },
+        "required": [
+          "report",
+          "cpu_digest"
+        ],
+        "title": "ScanResultRequest",
+        "type": "object"
+      },
+      "ScanResultResponse": {
+        "properties": {
+          "cpu_hashes_per_second": {
+            "title": "Cpu Hashes Per Second",
+            "type": "integer"
+          },
+          "listing_paused": {
+            "title": "Listing Paused",
+            "type": "boolean"
+          },
+          "scan_id": {
+            "format": "uuid",
+            "title": "Scan Id",
+            "type": "string"
+          },
+          "status": {
+            "const": "completed",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scan_id",
+          "status",
+          "cpu_hashes_per_second",
+          "listing_paused"
+        ],
+        "title": "ScanResultResponse",
+        "type": "object"
+      },
       "StorageReport": {
         "additionalProperties": false,
         "properties": {
@@ -816,6 +1066,311 @@
         "summary": "Ready",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/v1/agent/enroll": {
+      "post": {
+        "operationId": "enroll_v1_agent_enroll_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentEnrollRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentEnrollResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Bind an agent's public key to a machine (one-time token)",
+        "tags": [
+          "agent"
+        ]
+      }
+    },
+    "/v1/agent/scans/claim": {
+      "post": {
+        "operationId": "claim_scan_v1_agent_scans_claim_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanChallengeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Claim the next requested scan and receive its challenge (signed request)",
+        "tags": [
+          "agent"
+        ]
+      }
+    },
+    "/v1/agent/scans/{scan_id}/result": {
+      "post": {
+        "operationId": "submit_scan_result_v1_agent_scans__scan_id__result_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Scan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanResultRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanResultResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Submit the hardware report and benchmark answer (signed request)",
+        "tags": [
+          "agent"
         ]
       }
     },
@@ -1303,9 +1858,9 @@
         ]
       }
     },
-    "/v1/provider/machines/{machine_id}/inventory": {
-      "put": {
-        "operationId": "submit_inventory_v1_provider_machines__machine_id__inventory_put",
+    "/v1/provider/machines/{machine_id}/enrollment": {
+      "post": {
+        "operationId": "create_enrollment_v1_provider_machines__machine_id__enrollment_post",
         "parameters": [
           {
             "in": "path",
@@ -1318,22 +1873,12 @@
             }
           }
         ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/InventoryReport"
-              }
-            }
-          },
-          "required": true
-        },
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/InventoryAcceptedResponse"
+                  "$ref": "#/components/schemas/EnrollmentResponse"
                 }
               }
             },
@@ -1415,7 +1960,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Submit a hardware scan (self-reported)",
+        "summary": "Issue a one-time token to install and enrol the Auren agent",
         "tags": [
           "provider"
         ]
@@ -1868,6 +2413,232 @@
           }
         ],
         "summary": "Resume hosting",
+        "tags": [
+          "provider"
+        ]
+      }
+    },
+    "/v1/provider/machines/{machine_id}/scans": {
+      "post": {
+        "operationId": "request_scan_v1_provider_machines__machine_id__scans_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "machine_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Machine Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Ask the enrolled agent to run a platform scan of this machine",
+        "tags": [
+          "provider"
+        ]
+      }
+    },
+    "/v1/provider/machines/{machine_id}/scans/{scan_id}": {
+      "get": {
+        "operationId": "get_scan_v1_provider_machines__machine_id__scans__scan_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "machine_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Machine Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "scan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Scan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Scan status and result",
         "tags": [
           "provider"
         ]

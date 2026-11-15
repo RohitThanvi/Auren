@@ -14,6 +14,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from auren_api.domain.inventory import Allocatable, InventorySnapshot
+from auren_api.domain.machine import ListingTier
 from auren_api.domain.money import Money
 from auren_api.models.machine import Machine, MachineInventory, MachineListing
 from auren_api.models.user import User
@@ -70,19 +71,24 @@ class MachineRepository:
     async def add_inventory(
         self,
         machine_id: uuid.UUID,
+        scan_id: uuid.UUID,
         snapshot: InventorySnapshot,
-        confidential_computing_flags: Collection[str],
         report: Mapping[str, Any],
+        cpu_hashes_per_second: int,
+        scan_elapsed_ms: int,
     ) -> MachineInventory:
         inventory = MachineInventory(
             machine_id=machine_id,
+            scan_id=scan_id,
+            cpu_hashes_per_second=cpu_hashes_per_second,
+            scan_elapsed_ms=scan_elapsed_ms,
             logical_cores=snapshot.logical_cores,
             memory_total_bytes=snapshot.memory_total_bytes,
             storage_total_bytes=snapshot.storage_total_bytes,
             gpu_memory_bytes=list(snapshot.gpu_memory_bytes),
             hardware_virtualization=snapshot.hardware_virtualization,
             kvm_available=snapshot.kvm_available,
-            confidential_computing_flags=sorted(confidential_computing_flags),
+            confidential_computing_flags=sorted(snapshot.confidential_computing_flags),
             report=dict(report),
         )
         self._session.add(inventory)
@@ -115,14 +121,22 @@ class MachineRepository:
         )
         return {listing.machine_id: listing for listing in result.scalars()}
 
+    async def inventory_for_scan(self, scan_id: uuid.UUID) -> MachineInventory | None:
+        result = await self._session.execute(
+            select(MachineInventory).where(MachineInventory.scan_id == scan_id)
+        )
+        return result.scalar_one_or_none()
+
     async def upsert_listing(
         self,
         machine_id: uuid.UUID,
+        tier: ListingTier,
         price: Money,
         allocatable: Allocatable,
         max_hosting_hours: int,
     ) -> None:
         values = {
+            "tier": tier,
             "price_per_hour_minor": price.amount_minor,
             "currency": price.currency,
             "allocatable_cpu_cores": allocatable.cpu_cores,

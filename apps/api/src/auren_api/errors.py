@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from auren_api.domain.errors import (
+    AuthenticationFailedError,
     ConflictViolationError,
     DomainError,
     ResourceNotFoundError,
@@ -54,8 +55,8 @@ class UnauthorizedError(AppError):
     code = "unauthorized"
     default_message = "Authentication is required."
 
-    def __init__(self, message: str | None = None) -> None:
-        super().__init__(message, headers={"WWW-Authenticate": "Bearer"})
+    def __init__(self, message: str | None = None, *, scheme: str = "Bearer") -> None:
+        super().__init__(message, headers={"WWW-Authenticate": scheme})
 
 
 class ForbiddenError(AppError):
@@ -126,7 +127,9 @@ def register_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(DomainError)
     async def _domain_error(_: Request, exc: DomainError) -> JSONResponse:
-        if isinstance(exc, ResourceNotFoundError):
+        if isinstance(exc, AuthenticationFailedError):
+            status_code = 401
+        elif isinstance(exc, ResourceNotFoundError):
             status_code = 404
         elif isinstance(exc, ConflictViolationError):
             status_code = 409

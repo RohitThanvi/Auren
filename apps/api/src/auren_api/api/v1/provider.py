@@ -24,17 +24,17 @@ from auren_api.schemas.common import ErrorResponse
 from auren_api.schemas.provider import (
     AllocatableRequest,
     CreateMachineRequest,
-    InventoryAcceptedResponse,
-    InventoryReport,
+    EnrollmentResponse,
     InventorySummaryResponse,
     ListingRequest,
     ListingResponse,
     MachineResponse,
     MoneyResponse,
     PriceRangeResponse,
+    ScanResponse,
 )
 from auren_api.schemas.users import MeResponse
-from auren_api.services.provider import InventoryView, MachineView
+from auren_api.services.provider import InventoryView, MachineView, ScanView
 from auren_api.services.users import UserAccount, UserService
 
 router = APIRouter(
@@ -54,7 +54,9 @@ def _money(value: Money) -> MoneyResponse:
 def _inventory(view: InventoryView) -> InventorySummaryResponse:
     return InventorySummaryResponse(
         id=view.id,
+        scan_id=view.scan_id,
         received_at=view.received_at,
+        cpu_hashes_per_second=view.cpu_hashes_per_second,
         logical_cores=view.logical_cores,
         memory_total_bytes=view.memory_total_bytes,
         storage_total_bytes=view.storage_total_bytes,
@@ -72,8 +74,10 @@ def _machine(view: MachineView) -> MachineResponse:
         name=view.name,
         status=view.status,
         created_at=view.created_at,
+        confidential_verified=view.confidential_verified,
         inventory=_inventory(view.inventory) if view.inventory else None,
         listing=ListingResponse(
+            tier=listing.tier,
             price_per_hour=_money(listing.price),
             cpu_cores=listing.allocatable.cpu_cores,
             memory_bytes=listing.allocatable.memory_bytes,
@@ -138,28 +142,54 @@ async def get_machine(
     return _machine(await service.get_machine(principal.user_id, machine_id))
 
 
-@router.put(
-    "/machines/{machine_id}/inventory",
-    response_model=InventoryAcceptedResponse,
-    summary="Submit a hardware scan (self-reported)",
+@router.post(
+    "/machines/{machine_id}/enrollment",
+    response_model=EnrollmentResponse,
+    summary="Issue a one-time token to install and enrol the Auren agent",
+    dependencies=[Depends(limit_by_user(RateLimitPolicy.EXPENSIVE))],
+)
+async def create_enrollment(
+    machine_id: UUID, principal: ProviderDep, service: ProviderServiceDep
+) -> EnrollmentResponse:
+    issued = await service.create_enrollment(principal.user_id, machine_id)
+    return EnrollmentResponse(enrollment_token=issued.token, expires_at=issued.expires_at)
+
+
+def _scan(view: ScanView) -> ScanResponse:
+    return ScanResponse(
+        id=view.id,
+        status=view.status,  # pyright: ignore[reportArgumentType]  # validated by the response model
+        failure_reason=view.failure_reason,  # pyright: ignore[reportArgumentType]
+        created_at=view.created_at,
+        expires_at=view.expires_at,
+        completed_at=view.completed_at,
+        cpu_hashes_per_second=view.cpu_hashes_per_second,
+    )
+
+
+@router.post(
+    "/machines/{machine_id}/scans",
+    response_model=ScanResponse,
+    status_code=201,
+    summary="Ask the enrolled agent to run a platform scan of this machine",
+    dependencies=[Depends(limit_by_user(RateLimitPolicy.EXPENSIVE))],
+)
+async def request_scan(
+    machine_id: UUID, principal: ProviderDep, service: ProviderServiceDep
+) -> ScanResponse:
+    return _scan(await service.request_scan(principal.user_id, machine_id))
+
+
+@router.get(
+    "/machines/{machine_id}/scans/{scan_id}",
+    response_model=ScanResponse,
+    summary="Scan status and result",
     dependencies=[_machine_limit],
 )
-async def submit_inventory(
-    machine_id: UUID,
-    body: InventoryReport,
-    principal: ProviderDep,
-    service: ProviderServiceDep,
-) -> InventoryAcceptedResponse:
-    accepted = await service.submit_inventory(
-        principal.user_id,
-        machine_id,
-        body.to_snapshot(),
-        body.cpu.confidential_computing_flags,
-        body.model_dump(mode="json"),
-    )
-    return InventoryAcceptedResponse(
-        inventory=_inventory(accepted.inventory), listing_paused=accepted.listing_paused
-    )
+async def get_scan(
+    machine_id: UUID, scan_id: UUID, principal: ProviderDep, service: ProviderServiceDep
+) -> ScanResponse:
+    return _scan(await service.get_scan(principal.user_id, machine_id, scan_id))
 
 
 @router.post(
@@ -174,7 +204,9 @@ async def price_range(
     principal: ProviderDep,
     service: ProviderServiceDep,
 ) -> PriceRangeResponse:
-    band = await service.price_range(principal.user_id, machine_id, body.to_domain())
+    band = await service.price_range(
+        principal.user_id, machine_id, body.to_domain(), body.tier_domain()
+    )
     return PriceRangeResponse(
         base=_money(band.base), floor=_money(band.floor), ceiling=_money(band.ceiling)
     )
@@ -195,6 +227,7 @@ async def set_listing(
     view = await service.set_listing(
         principal.user_id,
         machine_id,
+        body.tier_domain(),
         body.to_domain(),
         body.price_per_hour_minor,
         body.max_hosting_hours,

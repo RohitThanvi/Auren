@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from auren_api.domain.errors import RuleViolationError
 from auren_api.domain.inventory import Allocatable, InventorySnapshot
+from auren_api.domain.machine import ListingTier
 from auren_api.domain.money import Money
 
 BYTES_PER_GIB = 1024**3
@@ -20,6 +21,7 @@ class RateCard:
     storage_100gib_hour: Money
     floor_bps: int
     ceiling_bps: int
+    confidential_premium_bps: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,12 +35,16 @@ class PriceRange:
 
 
 def price_range(
-    rate_card: RateCard, snapshot: InventorySnapshot, allocatable: Allocatable
+    rate_card: RateCard,
+    snapshot: InventorySnapshot,
+    allocatable: Allocatable,
+    tier: ListingTier = ListingTier.STANDARD,
 ) -> PriceRange:
     """Compute the hourly price band for an offered allocation.
 
     Whole units only: partial GiB of memory/VRAM and partial 100 GiB storage blocks are not billed.
-    GPUs are priced by the VRAM of the selected devices.
+    GPUs are priced by the VRAM of the selected devices. The confidential tier's base price is the
+    standard base price scaled by the configured premium.
     """
     vram_bytes = sum(snapshot.gpu_memory_bytes[i] for i in allocatable.gpu_indices)
     base = (
@@ -51,6 +57,8 @@ def price_range(
         raise RuleViolationError(
             "allocation_exceeds_capacity", "The offered resources are too small to be priced."
         )
+    if tier is ListingTier.CONFIDENTIAL:
+        base = base.apply_basis_points(rate_card.confidential_premium_bps)
     floor = base.apply_basis_points(rate_card.floor_bps)
     floor = floor if floor.amount_minor >= 1 else Money(1, base.currency)
     ceiling = base.apply_basis_points(rate_card.ceiling_bps)

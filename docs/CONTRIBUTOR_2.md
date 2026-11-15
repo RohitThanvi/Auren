@@ -15,11 +15,19 @@ The agent protocol definition, API, database, `packages/contracts/**`, `docker-c
 
 ## Scan contract (shared with the API)
 
-The API accepts exactly the JSON that `python -m auren_agent scan` prints, validated strictly (unknown fields rejected). `packages/contracts/examples/inventory.json` is the shared example; `tests/test_cli.py` checks it against the agent model. **Adding or renaming a scan field requires the backend owner to change the API first**, otherwise submitted scans will be rejected. Reported confidential-computing flags are indicators, not attestation.
+The scan `report` the API accepts is exactly the JSON that `python -m auren_agent scan` prints, validated strictly (unknown fields rejected), and only as part of a platform-run scan (see [SCAN.md](SCAN.md)). `packages/contracts/examples/inventory.json` is the shared example; `tests/test_cli.py` checks it against the agent model. **Adding or renaming a scan field requires the backend owner to change the API first**, otherwise submitted scans will be rejected. Reported confidential-computing flags are indicators, not attestation.
+
+## Commands
+
+`scan` (local JSON, no network), `run` (development mode log, no network), `enroll --machine-id <id>` (token from `AUREN_AGENT_ENROLLMENT_TOKEN`), `run-scan` (claim, answer the challenge, submit). Exit codes: 0 ok, 1 failure, 3 no scan requested. Network commands need `AUREN_AGENT_STATE_DIR` and `AUREN_AGENT_CONTROL_PLANE_URL`.
+
+## Protocol rules
+
+The canonical string and header names in `signing.py` must match the API byte for byte; both sides are tested against `packages/contracts/examples/signing_vector.json`, which the backend owner changes. The benchmark in `benchmark.py` must match `domain/scan.py` in the API. Never log the enrolment token or key material, never accept an `http://` control plane except on loopback, and keep the key file at mode 0600.
 
 ## Current state
 
-Development mode only: `scan` and `run` read CPU, memory, NVIDIA GPUs and storage through `HardwareProbe`/`LinuxHardwareProbe`. The agent makes no network connections and runs no workloads.
+`scan`/`run` read CPU, memory, NVIDIA GPUs, storage, platform/KVM, confidential-computing flags and network interfaces through `HardwareProbe`/`LinuxHardwareProbe`. `enroll` and `run-scan` talk to the API. There is no long-running daemon and no workload execution; `AUREN_AGENT_MODE` accepts only `development`.
 
 ## Boundaries
 

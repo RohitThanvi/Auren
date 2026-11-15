@@ -14,10 +14,14 @@ PostgreSQL 16 (`gen_random_uuid()` requires 13+) is the only authoritative datas
 
 - `users(id, clerk_user_id UNIQUE, ...)`, `user_roles(user_id FK RESTRICT, role CHECK, granted_at, PK(user_id, role))`.
 - `machines(id, owner_user_id FK RESTRICT, name, status CHECK, UNIQUE(owner_user_id, name))`.
-- `machine_inventories(id, machine_id FK RESTRICT, created_at, logical_cores, memory_total_bytes, storage_total_bytes, gpu_memory_bytes[], hardware_virtualization, kvm_available, confidential_computing_flags[], report JSONB)`: append-only; CHECK constraints on positive capacities.
-- `machine_listings(machine_id PK/FK RESTRICT, price_per_hour_minor, currency, allocatable_*, max_hosting_hours, ...)`: one current offer per machine; CHECK constraints on positive values.
+- `machines(..., confidential_verified_at NULL)`: set only by the platform's attestation of a canary confidential guest (not implemented; nothing writes it yet).
+- `machine_enrollments(machine_id FK, token_hash UNIQUE, expires_at, used_at, revoked_at)`: one-time tokens, hash only.
+- `machine_credentials(machine_id FK, public_key BYTEA CHECK 32 bytes, revoked_at)`: partial unique index allows one active credential per machine.
+- `machine_scans(machine_id FK, status, failure_reason, challenge, cpu_iterations, expires_at, claimed_at, completed_at)`: partial unique index allows one open (pending or claimed) scan per machine; never deleted.
+- `machine_inventories(machine_id FK, scan_id FK UNIQUE, cpu_hashes_per_second, scan_elapsed_ms, logical_cores, memory_total_bytes, storage_total_bytes, gpu_memory_bytes[], hardware_virtualization, kvm_available, confidential_computing_flags[], report JSONB)`: append-only, exactly one per completed scan.
+- `machine_listings(machine_id PK/FK RESTRICT, tier, price_per_hour_minor, currency, allocatable_*, max_hosting_hours, ...)`: one current offer per machine; CHECK constraints on positive values.
 
-Migrations: `0001` users/roles, `0002` machines, inventories, listings, `granted_at`.
+Migrations: `0001` users/roles, `0002` provider machines, scans, agent credentials, inventories, listings, `granted_at`.
 
 ## Migration policy
 
