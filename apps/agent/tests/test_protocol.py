@@ -256,7 +256,7 @@ def test_a_stolen_key_file_is_not_accepted_with_loose_permissions(agent_env: Pat
 def test_empty_environment_values_mean_not_configured(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Copying .env.example leaves the network settings empty; they must not break local commands."""
+    """Copying .env.example leaves network settings empty; local commands must still work."""
     monkeypatch.setenv("AUREN_AGENT_MODE", "development")
     monkeypatch.setenv("AUREN_AGENT_STORAGE_PATH", str(tmp_path))
     for name in ("STATE_DIR", "CONTROL_PLANE_URL", "ENROLLMENT_TOKEN"):
