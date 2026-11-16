@@ -1,15 +1,8 @@
 {
   "cpu": {
     "model_name": "AMD EPYC 7B13",
-    "architecture": "x86_64",
     "logical_cores": 32,
-    "physical_cores": 16,
-    "hardware_virtualization": true,
-    "confidential_computing_flags": [
-      "sev",
-      "sev_es",
-      "sev_snp"
-    ]
+    "physical_cores": 16
   },
   "memory": {
     "total_bytes": 68719476736,
@@ -17,6 +10,8 @@
   },
   "gpus": [
     {
+      "index": 0,
+      "uuid": "GPU-1b2f0c9e-4d3a-4e55-9d7c-3f4a5b6c7d8e",
       "name": "NVIDIA GeForce RTX 4090",
       "memory_total_bytes": 25769803776,
       "driver_version": "550.54.14"
@@ -27,11 +22,29 @@
     "total_bytes": 1073741824000,
     "free_bytes": 966367641600
   },
+  "security": {
+    "cpu_reports_hardware_virtualization": true,
+    "kvm_device_present": true,
+    "kvm_device_usable_by_agent": true,
+    "cgroup_v2": true,
+    "cgroup_controllers": [
+      "cpu",
+      "memory",
+      "io",
+      "pids"
+    ],
+    "agent_running_as_root": false,
+    "confidential_computing_flags": [
+      "sev",
+      "sev_es",
+      "sev_snp"
+    ]
+  },
   "platform": {
     "system": "Linux",
+    "architecture": "x86_64",
     "kernel_release": "6.8.0-45-generic",
-    "os_name": "Ubuntu 24.04.1 LTS",
-    "kvm_available": true
+    "os_name": "Ubuntu 24.04.1 LTS"
   },
   "network": [
     {

@@ -336,12 +336,6 @@ export interface components {
         };
         /** CpuReport */
         CpuReport: {
-            /** Architecture */
-            architecture: string;
-            /** Confidential Computing Flags */
-            confidential_computing_flags: ("sev" | "sev_es" | "sev_snp" | "tdx_host_platform")[];
-            /** Hardware Virtualization */
-            hardware_virtualization: boolean;
             /** Logical Cores */
             logical_cores: number;
             /** Model Name */
@@ -397,10 +391,14 @@ export interface components {
         GpuReport: {
             /** Driver Version */
             driver_version: string;
+            /** Index */
+            index: number;
             /** Memory Total Bytes */
             memory_total_bytes: number;
             /** Name */
             name: string;
+            /** Uuid */
+            uuid: string;
         };
         /** InventoryReport */
         InventoryReport: {
@@ -411,6 +409,7 @@ export interface components {
             /** Network */
             network: components["schemas"]["NetworkInterfaceReport"][];
             platform: components["schemas"]["PlatformReport"];
+            security: components["schemas"]["SecurityReport"];
             storage: components["schemas"]["StorageReport"];
         };
         /** InventorySummaryResponse */
@@ -561,10 +560,10 @@ export interface components {
         };
         /** PlatformReport */
         PlatformReport: {
+            /** Architecture */
+            architecture: string;
             /** Kernel Release */
             kernel_release: string;
-            /** Kvm Available */
-            kvm_available: boolean;
             /** Os Name */
             os_name: string;
             /** System */
@@ -661,6 +660,26 @@ export interface components {
              * @constant
              */
             status: "completed";
+        };
+        /**
+         * SecurityReport
+         * @description Reported host capabilities. Indicators only: nothing here is attested.
+         */
+        SecurityReport: {
+            /** Agent Running As Root */
+            agent_running_as_root: boolean;
+            /** Cgroup Controllers */
+            cgroup_controllers: string[];
+            /** Cgroup V2 */
+            cgroup_v2: boolean;
+            /** Confidential Computing Flags */
+            confidential_computing_flags: ("sev" | "sev_es" | "sev_snp" | "tdx_host_platform")[];
+            /** Cpu Reports Hardware Virtualization */
+            cpu_reports_hardware_virtualization: boolean;
+            /** Kvm Device Present */
+            kvm_device_present: boolean;
+            /** Kvm Device Usable By Agent */
+            kvm_device_usable_by_agent: boolean;
         };
         /** StorageReport */
         StorageReport: {

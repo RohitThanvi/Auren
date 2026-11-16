@@ -1,6 +1,7 @@
-"""Agent command line: ``python -m auren_agent {scan,run,enroll,run-scan}``.
+"""Agent command line: ``python -m auren_agent {scan,status,run,enroll,run-scan}``.
 
-Exit codes: 0 success, 1 failure, 2 usage error, 3 no scan has been requested.
+Exit codes: 0 success, 1 failure, 2 usage error, 3 no scan has been requested,
+4 the benchmark was refused by the provider's policy or the host's condition.
 """
 
 import argparse
@@ -15,8 +16,8 @@ import structlog
 from auren_agent.benchmark import cpu_chain
 from auren_agent.client import ControlPlaneClient, ControlPlaneError
 from auren_agent.config import AgentSettings, get_settings
-from auren_agent.hardware.linux import LinuxHardwareProbe
-from auren_agent.hardware.probe import HardwareProbe, HardwareProbeError
+from auren_agent.hardware.errors import HardwareProbeError
+from auren_agent.hardware.host_facts import LinuxHostFactsProbe
 from auren_agent.identity import (
     IdentityError,
     load_machine_id,
@@ -24,38 +25,41 @@ from auren_agent.identity import (
     save_machine_id,
 )
 from auren_agent.logging import configure_logging
+from auren_agent.resources.policy import PolicyError
+from auren_agent.scan_report import build_scan_report
+from auren_agent.status import build_probe, collect_status
 
 logger = structlog.get_logger(__name__)
 
 EXIT_OK = 0
 EXIT_FAILURE = 1
 EXIT_NO_SCAN_REQUESTED = 3
+EXIT_BENCHMARK_REFUSED = 4
 
 
 class ConfigurationError(Exception):
     """A setting required by the requested command is missing."""
 
 
-def build_probe(settings: AgentSettings) -> HardwareProbe:
-    return LinuxHardwareProbe(
-        storage_path=settings.storage_path,
-        gpu_probe_timeout_seconds=settings.gpu_probe_timeout_seconds,
-    )
-
-
 def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="auren-agent")
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("scan", help="print the local hardware inventory as JSON (no network)")
+    commands.add_parser("scan", help="print the hardware inventory as JSON and exit")
     commands.add_parser(
-        "run", help="development mode: scan hardware and log it (no network, no workloads)"
+        "status",
+        help="print inventory, security capabilities, health, availability and allocatable "
+        "capacity as JSON and exit (reads the provider policy if configured)",
+    )
+    commands.add_parser(
+        "run", help="start the agent (development mode: scans hardware, no network, no workloads)"
     )
     enroll = commands.add_parser(
         "enroll", help="register this machine's key with the platform (token from the environment)"
     )
     enroll.add_argument("--machine-id", type=uuid.UUID, required=True)
     commands.add_parser(
-        "run-scan", help="run the platform scan requested by the provider and submit the result"
+        "run-scan",
+        help="run the platform scan the provider requested (needs benchmark consent in the policy)",
     )
     return parser.parse_args(argv)
 
@@ -86,8 +90,16 @@ def _run_scan(settings: AgentSettings) -> int:
     state_dir, base_url = _network_settings(settings)
     identity = load_or_create_identity(state_dir)
     machine_id = load_machine_id(state_dir)
-    # Read hardware first: the server times the benchmark from when it hands out the challenge.
-    inventory = build_probe(settings).scan()
+    # Read everything and consult the provider's policy first. The server times the benchmark
+    # from the moment it hands out the challenge, and a refused benchmark must never be claimed.
+    status = collect_status(settings)
+    if status.benchmark_refusals:
+        logger.warning("scan_refused_by_host_policy", reasons=status.benchmark_refusals)
+        return EXIT_BENCHMARK_REFUSED
+    facts = LinuxHostFactsProbe()
+    report = build_scan_report(
+        status.inventory, status.security, facts.platform_info(), facts.network_interfaces()
+    )
     with httpx.Client(timeout=settings.http_timeout_seconds) as http:
         client = ControlPlaneClient(http, base_url)
         challenge = client.claim_scan(identity.private_key, machine_id)
@@ -99,7 +111,7 @@ def _run_scan(settings: AgentSettings) -> int:
             identity.private_key,
             machine_id,
             challenge.scan_id,
-            inventory.model_dump(mode="json"),
+            report.model_dump(mode="json"),
             digest,
         )
     logger.info(
@@ -112,6 +124,10 @@ def _run_scan(settings: AgentSettings) -> int:
 
 
 def _local(settings: AgentSettings, command: str) -> int:
+    if command == "status":
+        report = collect_status(settings)
+        sys.stdout.write(report.model_dump_json(indent=2) + "\n")
+        return EXIT_OK
     inventory = build_probe(settings).scan()
     if command == "scan":
         sys.stdout.write(inventory.model_dump_json(indent=2) + "\n")
@@ -139,6 +155,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _local(settings, args.command)
     except HardwareProbeError as exc:
         logger.error("hardware_scan_failed", reason=str(exc))
+    except PolicyError as exc:
+        logger.error("status_failed", reason=str(exc))
     except (ConfigurationError, IdentityError) as exc:
         logger.error("agent_configuration_error", reason=str(exc))
     except ControlPlaneError as exc:

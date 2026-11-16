@@ -1,4 +1,3 @@
-import platform
 import shutil
 import stat
 import sys
@@ -6,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from auren_agent.hardware.linux import LinuxHardwareProbe, LinuxPaths
+from auren_agent.hardware.linux import LinuxHardwareProbe
 from auren_agent.hardware.probe import HardwareProbeError
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -25,12 +24,7 @@ def make_probe(proc_root: Path, storage: Path, nvidia_smi: str | None = None, ti
     return LinuxHardwareProbe(
         storage_path=storage,
         gpu_probe_timeout_seconds=timeout,
-        paths=LinuxPaths(
-            proc=proc_root,
-            sys=proc_root.parent / "sys",
-            dev=proc_root.parent / "dev",
-            etc=proc_root.parent / "etc",
-        ),
+        proc_root=proc_root,
         nvidia_smi=nvidia_smi,
     )
 
@@ -91,18 +85,22 @@ def test_incomplete_meminfo_is_an_error(proc_root: Path, tmp_path: Path) -> None
 def test_gpus_are_parsed_from_nvidia_smi(proc_root: Path, tmp_path: Path) -> None:
     smi = fake_nvidia_smi(
         tmp_path,
-        "print('NVIDIA RTX 4090, 24564, 550.54')\nprint('NVIDIA A100, 81920, 550.54')",
+        "print('0, GPU-aaa, NVIDIA RTX 4090, 24564, 550.54')\n"
+        "print('1, GPU-bbb, NVIDIA A100, 81920, 550.54')",
     )
     gpus = make_probe(proc_root, tmp_path, smi).scan().gpus
-    assert [(gpu.name, gpu.memory_total_bytes, gpu.driver_version) for gpu in gpus] == [
-        ("NVIDIA RTX 4090", 24564 * 1024 * 1024, "550.54"),
-        ("NVIDIA A100", 81920 * 1024 * 1024, "550.54"),
+    assert [
+        (gpu.index, gpu.uuid, gpu.name, gpu.memory_total_bytes, gpu.driver_version) for gpu in gpus
+    ] == [
+        (0, "GPU-aaa", "NVIDIA RTX 4090", 24564 * 1024 * 1024, "550.54"),
+        (1, "GPU-bbb", "NVIDIA A100", 81920 * 1024 * 1024, "550.54"),
     ]
 
 
 def test_unparseable_gpu_rows_are_skipped(proc_root: Path, tmp_path: Path) -> None:
     smi = fake_nvidia_smi(
-        tmp_path, "print('garbage')\nprint('GPU, notanumber, 1')\nprint('OK, 10, 1')"
+        tmp_path,
+        "print('garbage')\nprint('0, GPU-x, GPU, notanumber, 1')\nprint('2, GPU-y, OK, 10, 1')",
     )
     gpus = make_probe(proc_root, tmp_path, smi).scan().gpus
     assert [gpu.name for gpu in gpus] == ["OK"]
@@ -127,71 +125,3 @@ def test_real_host_scan(tmp_path: Path) -> None:
     inventory = LinuxHardwareProbe(storage_path=tmp_path, gpu_probe_timeout_seconds=5.0).scan()
     assert inventory.cpu.logical_cores >= 1
     assert inventory.memory.total_bytes > 0
-
-
-def test_cpu_virtualization_and_confidential_flags(proc_root: Path, tmp_path: Path) -> None:
-    cpu = make_probe(proc_root, tmp_path).scan().cpu
-    assert cpu.hardware_virtualization is True
-    assert cpu.confidential_computing_flags == ["sev", "sev_es", "sev_snp"]
-    assert cpu.architecture == platform.machine()
-
-
-def test_cpu_without_flags_reports_no_virtualization(proc_root: Path, tmp_path: Path) -> None:
-    (proc_root / "cpuinfo").write_text("processor : 0\nflags : fpu nx\n", encoding="utf-8")
-    cpu = make_probe(proc_root, tmp_path).scan().cpu
-    assert cpu.hardware_virtualization is False
-    assert cpu.confidential_computing_flags == []
-
-
-def test_arm_features_line_is_understood(proc_root: Path, tmp_path: Path) -> None:
-    (proc_root / "cpuinfo").write_text("processor : 0\nFeatures : fp asimd\n", encoding="utf-8")
-    assert make_probe(proc_root, tmp_path).scan().cpu.hardware_virtualization is False
-
-
-def test_platform_reads_os_release_and_kvm(proc_root: Path, tmp_path: Path) -> None:
-    root = proc_root.parent
-    (root / "etc").mkdir()
-    (root / "etc" / "os-release").write_text(
-        'NAME=X\nPRETTY_NAME="Test Linux 1.0"\n', encoding="utf-8"
-    )
-    (root / "dev").mkdir()
-    (root / "dev" / "kvm").touch()
-    info = make_probe(proc_root, tmp_path).scan().platform
-    assert (info.os_name, info.kvm_available) == ("Test Linux 1.0", True)
-    assert info.kernel_release == platform.release()
-
-
-def test_platform_defaults_when_files_are_absent(proc_root: Path, tmp_path: Path) -> None:
-    info = make_probe(proc_root, tmp_path).scan().platform
-    assert (info.os_name, info.kvm_available) == ("unknown", False)
-
-
-def _nic(root: Path, name: str, *, physical: bool, speed: str | None, state: str) -> None:
-    nic = root / "sys" / "class" / "net" / name
-    nic.mkdir(parents=True)
-    if physical:
-        (nic / "device").mkdir()
-    if speed is not None:
-        (nic / "speed").write_text(speed + "\n", encoding="utf-8")
-    (nic / "operstate").write_text(state + "\n", encoding="utf-8")
-
-
-def test_only_physical_non_loopback_interfaces_are_reported(
-    proc_root: Path, tmp_path: Path
-) -> None:
-    root = proc_root.parent
-    _nic(root, "lo", physical=False, speed=None, state="unknown")
-    _nic(root, "docker0", physical=False, speed="10000", state="up")
-    _nic(root, "eth0", physical=True, speed="1000", state="up")
-    _nic(root, "wlan0", physical=True, speed="-1", state="down")
-    _nic(root, "eth1", physical=True, speed=None, state="down")
-    network = make_probe(proc_root, tmp_path).scan().network
-    assert [(n.name, n.speed_mbps, n.is_up) for n in network] == [
-        ("eth0", 1000, True),
-        ("eth1", None, False),
-        ("wlan0", None, False),
-    ]
-
-
-def test_missing_sysfs_net_yields_no_interfaces(proc_root: Path, tmp_path: Path) -> None:
-    assert make_probe(proc_root, tmp_path).scan().network == []

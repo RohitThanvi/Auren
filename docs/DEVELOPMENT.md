@@ -39,7 +39,7 @@ Configuration is validated at startup; the process refuses to start on invalid v
 | `AUREN_TEST_DATABASE_URL` / `AUREN_TEST_REDIS_URL` | Used only by the test suite; database name must end in `_test` |
 | `AUREN_PRICING_CONFIDENTIAL_PREMIUM_BPS` (**required**) | Confidential-tier price factor (basis points, at least 10000) |
 | `AUREN_SCAN_*`, `AUREN_ENROLLMENT_TTL_SECONDS`, `AUREN_AGENT_REQUEST_MAX_SKEW_SECONDS` | Platform scan lifetime, result deadline, benchmark size, enrolment token lifetime, signed-request clock skew |
-| `AUREN_AGENT_*` | Agent mode (`development` only), storage path, log level, GPU probe timeout, `STATE_DIR`, `CONTROL_PLANE_URL`, `ENROLLMENT_TOKEN`, `HTTP_TIMEOUT_SECONDS` |
+| `AUREN_AGENT_*` | Agent mode (`development` only), storage path, log level, GPU probe timeout, `POLICY_PATH` (provider policy file), `HOST_RESERVE_CPU_CORES` / `HOST_RESERVE_MEMORY_FRACTION` / `HOST_RESERVE_STORAGE_FRACTION`, `STATE_DIR`, `CONTROL_PLANE_URL`, `ENROLLMENT_TOKEN`, `HTTP_TIMEOUT_SECONDS` |
 | `VITE_CLERK_PUBLISHABLE_KEY`, `VITE_API_BASE_URL` | Frontend build-time configuration (public values only) |
 
 ## Tests and checks
@@ -63,7 +63,7 @@ AUREN_AGENT_MODE=development AUREN_AGENT_STORAGE_PATH=/tmp uv run python -m aure
 AUREN_AGENT_MODE=development AUREN_AGENT_STORAGE_PATH=/tmp uv run python -m auren_agent run
 ```
 
-`scan` prints the inventory as JSON; `run` logs it and exits (no network, no workloads in development mode).
+`scan` prints the inventory as JSON; `status` prints inventory, security capabilities, health, availability and allocatable capacity (reads the provider policy); `run` logs the inventory and exits (no network, no workloads in development mode). The provider policy file (`AUREN_AGENT_POLICY_PATH`, schema in `apps/agent/src/auren_agent/resources/policy.py`) must exist with `benchmark_consent: true` for `run-scan` to run the platform benchmark.
 
 Enrol and run a platform scan against a running API (token from the provider's `POST .../enrollment`):
 

@@ -11,7 +11,7 @@ Any software that runs on a machine its owner controls can be tampered with. Pro
 | Measured by us | Our server's clock or computation decides; the provider can only look worse, not better | Single-thread CPU speed (implemented); network throughput and latency (designed) |
 | Cryptographically attested | Rooted in hardware keys the provider cannot forge | TPM quote, SEV-SNP / TDX / GPU attestation (designed) |
 | Challenge-verified | The agent must prove it has the resource by answering a random, server-checked challenge | Memory, disk and GPU proofs (designed) |
-| Agent-reported | Read from the OS by the agent; a modified agent or spoofed OS can lie | Core count, RAM size, GPU names, kernel, NIC list, CPU flags (implemented) |
+| Agent-reported | Read from the OS by the agent; a modified agent or spoofed OS can lie | Core count, RAM size, GPU names and UUIDs, kernel, NIC list, CPU flags, security capabilities (implemented) |
 
 The scan record and API label this: `verification: "agent_scanned"` means "reported through an enrolled agent with a server-timed benchmark". It does **not** mean the hardware facts are proven.
 
@@ -64,9 +64,13 @@ The challenge is a sequential SHA-256 chain started from a server-generated rand
 
 Limit: this proves "some machine answered quickly", not "this specific hardware did". See the proxy attack below.
 
+### Provider consent and the host's condition
+
+The CPU benchmark loads the machine, so `run-scan` respects the provider's own rules (the agent's benchmark gate, `resources/benchmark_gate.py`). It reads the provider's local policy file and refuses to run, **without claiming the challenge** (so the server's timer never starts), unless the provider has set `benchmark_consent`, the host is not paused, a temperature sensor is readable and below the provider's limit, and the 1-minute load is at most 0.5 per core. The command exits with code 4 and logs the reasons. The scan then stays pending until it expires. Because the gate requires a readable temperature sensor, machines without one (common in VMs) cannot currently be scanned; this is an open product decision (ROADMAP).
+
 ### What the agent collects
 
-CPU model and architecture, logical/physical core count, virtualization and confidential-computing CPU flags, total and available memory, GPU names/VRAM/driver (via `nvidia-smi`), the free and total space of one configured directory, OS name, kernel, `/dev/kvm` presence, and physical network interfaces (name, link speed, up/down). It does not read files, processes, browsing data, user accounts or network traffic. The full schema is `packages/contracts/examples/inventory.json`.
+The report (`ScanReport`, example in `packages/contracts/examples/inventory.json`) contains: CPU model and core counts; total and available memory; for each NVIDIA GPU its index, UUID, name, VRAM and driver; free and total space of one configured directory; security capabilities (virtualization flag, `/dev/kvm` presence and usability, cgroup v2 controllers, whether the agent runs as root, confidential-computing CPU flags); OS name, kernel and architecture; and physical network interfaces (name, link speed, up/down). It does not read files, processes, browsing data, user accounts or network traffic.
 
 ## Attacks and residual risk
 

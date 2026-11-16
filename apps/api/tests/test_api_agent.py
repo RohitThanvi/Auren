@@ -525,9 +525,9 @@ async def test_invalid_reports_are_rejected_without_consuming_the_scan(
 
     def variant(path: list[str], value: Any) -> dict[str, Any]:
         body: dict[str, Any] = copy.deepcopy(EXAMPLE)
-        node = body
+        node: Any = body
         for key in path[:-1]:
-            node = node[key]
+            node = node[int(key)] if key.isdigit() else node[key]
         node[path[-1]] = value
         return body
 
@@ -536,13 +536,17 @@ async def test_invalid_reports_are_rejected_without_consuming_the_scan(
         variant(["cpu", "logical_cores"], 10**9),
         variant(["cpu", "physical_cores"], 64),
         variant(["cpu", "model_name"], "evil\nmodel"),
-        variant(["cpu", "confidential_computing_flags"], ["quantum"]),
+        variant(["security", "confidential_computing_flags"], ["quantum"]),
         variant(["memory", "available_bytes"], 10**15),
         variant(["memory", "total_bytes"], 2**60),
         variant(["memory", "total_bytes"], "68719476736"),
         variant(["storage", "free_bytes"], 10**15),
         variant(["gpus"], [EXAMPLE["gpus"][0]] * 17),
         variant(["platform", "unexpected"], "field"),
+        variant(["gpus", "0", "index"], 3),
+        variant(["gpus"], [EXAMPLE["gpus"][0], {**EXAMPLE["gpus"][0], "index": 1}]),
+        variant(["security", "cgroup_controllers"], ["x"] * 33),
+        variant(["security", "agent_running_as_root"], "no"),
         variant(["network"], [{"name": "eth0", "speed_mbps": -5, "is_up": True}]),
         {k: v for k, v in EXAMPLE.items() if k != "memory"},
         {**EXAMPLE, "extra": 1},

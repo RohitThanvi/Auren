@@ -404,7 +404,7 @@ async def test_confidential_listing_requires_reported_hardware_support(
     headers = await provider(api, tokens, "user_cc_flags")
     machine_id = await machine(api, headers)
     agent = await enrolled_agent(api, headers, machine_id)
-    no_flags = mutated(["cpu", "confidential_computing_flags"], [])
+    no_flags = mutated(["security", "confidential_computing_flags"], [])
     assert (await run_scan(api, headers, agent, no_flags)).status_code == 200
     await set_db(api, "UPDATE machines SET confidential_verified_at = now()")
     response = await put_listing(
@@ -421,7 +421,7 @@ async def test_a_rescan_that_loses_confidential_support_pauses_the_listing(
     await set_db(api, "UPDATE machines SET confidential_verified_at = now()")
     await put_listing(api, headers, machine_id, listing(3000, "confidential", gpu_indices=[]))
     result = await run_scan(
-        api, headers, agent, mutated(["cpu", "confidential_computing_flags"], [])
+        api, headers, agent, mutated(["security", "confidential_computing_flags"], [])
     )
     assert result.json()["listing_paused"] is True
     base = f"/v1/provider/machines/{machine_id}"

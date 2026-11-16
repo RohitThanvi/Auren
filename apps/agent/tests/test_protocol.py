@@ -4,6 +4,7 @@ import stat
 import uuid
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -19,7 +20,9 @@ from auren_agent.identity import (
     load_or_create_identity,
     save_machine_id,
 )
+from auren_agent.scan_report import ScanReport
 from auren_agent.signing import canonical_message, sign_request
+from auren_agent.status import AgentStatus, collect_status
 from tests.fake_control_plane import CHALLENGE, ITERATIONS, FakeControlPlane
 
 VECTOR = json.loads(
@@ -146,6 +149,41 @@ def test_enrollment_token_is_not_exposed_in_repr(
     assert "very-secret-token-value" not in repr(AgentSettings())  # pyright: ignore[reportCallIssue]
 
 
+POLICY: dict[str, Any] = {
+    "schema_version": 1,
+    "enabled": True,
+    "paused": False,
+    "cpu_cores": 1,
+    "memory_bytes": 1024,
+    "storage_bytes": 1024,
+    "gpu_uuids": [],
+    "max_hosting_duration_seconds": 60,
+    "max_temperature_celsius": 85.0,
+    "allow_without_thermal_sensors": True,
+    "pause_behavior": "terminate",
+    "benchmark_consent": True,
+}
+
+
+MACHINE_DEPENDENT_REFUSALS = {"host_busy", "thermal_monitoring_unavailable"}
+
+
+@pytest.fixture(autouse=True)
+def host_conditions_are_neutral(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Remove only the reasons that depend on the test machine's load and sensors.
+
+    Consent, pause and policy-file checks stay real, so these tests behave the same on any host.
+    """
+    real = cli.collect_status
+
+    def collect(settings: AgentSettings) -> AgentStatus:
+        status = real(settings)
+        kept = [r for r in status.benchmark_refusals if r not in MACHINE_DEPENDENT_REFUSALS]
+        return status.model_copy(update={"benchmark_refusals": kept})
+
+    monkeypatch.setattr(cli, "collect_status", collect)
+
+
 # --- commands against a real (loopback) control plane --------------------------------------
 
 
@@ -164,6 +202,10 @@ def agent_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, plane: FakeContro
     monkeypatch.setenv("AUREN_AGENT_STATE_DIR", str(state))
     monkeypatch.setenv("AUREN_AGENT_CONTROL_PLANE_URL", plane.url)
     monkeypatch.setenv("AUREN_AGENT_ENROLLMENT_TOKEN", plane.state.enrollment_token)
+    policy_file = tmp_path / "policy.json"
+    policy_file.write_text(json.dumps(POLICY), encoding="utf-8")
+    policy_file.chmod(0o600)
+    monkeypatch.setenv("AUREN_AGENT_POLICY_PATH", str(policy_file))
     get_settings.cache_clear()
     return state
 
@@ -221,7 +263,15 @@ def test_run_scan_answers_the_challenge_and_submits_a_signed_report(
     (result,) = plane.state.results
     assert result["digest_correct"] is True
     assert result["cpu_digest"] == cpu_chain(CHALLENGE, ITERATIONS).hex()
-    assert set(result["report"]) == {"cpu", "memory", "gpus", "storage", "platform", "network"}
+    assert set(result["report"]) == {
+        "cpu",
+        "memory",
+        "gpus",
+        "storage",
+        "security",
+        "platform",
+        "network",
+    }
     assert len(plane.state.nonces) == 2  # claim and result each used a fresh nonce
 
 
@@ -267,3 +317,66 @@ def test_empty_environment_values_mean_not_configured(
         None,
         None,
     )
+
+
+def test_a_missing_consent_stops_the_scan_before_the_challenge_is_claimed(
+    agent_env: Path, plane: FakeControlPlane, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    assert enroll() == 0
+    plane.state.pending_scan = True
+    declined = tmp_path / "declined.json"
+    declined.write_text(json.dumps({**POLICY, "benchmark_consent": False}), encoding="utf-8")
+    declined.chmod(0o600)
+    monkeypatch.setenv("AUREN_AGENT_POLICY_PATH", str(declined))
+    get_settings.cache_clear()
+    assert cli.main(["run-scan"]) == 4
+    assert plane.state.pending_scan is True  # never claimed: the server's timer was not started
+    assert plane.state.results == []
+
+
+def test_no_policy_at_all_also_refuses_the_benchmark(
+    agent_env: Path, plane: FakeControlPlane, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert enroll() == 0
+    plane.state.pending_scan = True
+    monkeypatch.delenv("AUREN_AGENT_POLICY_PATH")
+    get_settings.cache_clear()
+    assert cli.main(["run-scan"]) == 4
+    assert plane.state.pending_scan is True
+
+
+def test_a_hot_or_busy_host_refuses_the_benchmark(
+    agent_env: Path, plane: FakeControlPlane, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert enroll() == 0
+    plane.state.pending_scan = True
+    real = collect_status
+
+    def busy(settings: AgentSettings) -> AgentStatus:
+        return real(settings).model_copy(
+            update={"benchmark_refusals": ["host_busy", "temperature_at_or_above_provider_limit"]}
+        )
+
+    monkeypatch.setattr(cli, "collect_status", busy)
+    assert cli.main(["run-scan"]) == 4
+    assert plane.state.pending_scan is True
+
+
+def test_an_unsafe_policy_file_fails_the_scan(
+    agent_env: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    unsafe = tmp_path / "unsafe.json"
+    unsafe.write_text(json.dumps(POLICY), encoding="utf-8")
+    unsafe.chmod(0o666)
+    monkeypatch.setenv("AUREN_AGENT_POLICY_PATH", str(unsafe))
+    get_settings.cache_clear()
+    assert enroll() == 0
+    assert cli.main(["run-scan"]) == 1
+
+
+def test_the_shared_contract_example_matches_the_scan_report_model() -> None:
+    """The API validates the same file; both sides must keep accepting it."""
+    example = Path(__file__).resolve().parents[3] / "packages/contracts/examples/inventory.json"
+    text = example.read_text(encoding="utf-8")
+    report = ScanReport.model_validate_json(text)
+    assert json.loads(report.model_dump_json()) == json.loads(text)

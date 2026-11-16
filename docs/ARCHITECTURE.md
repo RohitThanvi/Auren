@@ -11,7 +11,7 @@ Provider host (apps/agent) --outbound HTTPS, Ed25519-signed requests--> API   (e
 | Component | Path | State |
 | --- | --- | --- |
 | API (modular monolith, FastAPI) | `apps/api` | Foundation implemented |
-| Provider agent (Python) | `apps/agent` | Hardware scan, enrolment, signed scan protocol; no workloads |
+| Provider agent (Python) | `apps/agent` | Hardware inventory, health, security capabilities, provider policy and capacity calculation; enrolment and signed platform scans; no workloads |
 | Web (React, Vite) | `apps/web` | Home, sign-in, dashboard |
 | Shared contracts | `packages/contracts` | Types generated from the API's OpenAPI document |
 | Dev infrastructure | `docker-compose.yml`, `infra/` | PostgreSQL, Redis, migrations, API |

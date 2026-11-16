@@ -4,11 +4,14 @@ Meaningful project changes, newest first. Only shipped behaviour is listed.
 
 ## Unreleased: foundation
 
+### Added (provider agent, Contributor 2)
+- Provider agent: security capabilities, host health and temperatures, provider policy file, allocatable-capacity calculation, benchmark safety gate, `status` command; GPUs now report index and UUID.
+
 ### Added (platform-run scan and tiers)
 - Per-machine Ed25519 identity: one-time enrolment tokens (hashed, short-lived, single use), weak-key rejection, signed agent requests with replay protection (`AUREN-AGENT-V1`), shared signing test vector.
 - Platform-run scans: provider requests, enrolled agent claims a server-generated challenge and submits a signed result; server-timed, server-verified CPU benchmark; one open scan per machine; results single use. Provider-submitted inventory removed.
 - Standard and Confidential tiers with separate price bands (`AUREN_PRICING_CONFIDENTIAL_PREMIUM_BPS`); confidential listings gated on reported support, platform attestation (not yet obtainable) and no GPUs.
-- Agent commands `enroll` and `run-scan`; private key stored with 0600 permissions; https required for the control plane (http for loopback only).
+- Agent commands `enroll` and `run-scan` (honours the provider's benchmark consent and thermal/load gate); private key stored with 0600 permissions; https required for the control plane (http for loopback only).
 - Design document `docs/SCAN.md` (trust model, implemented protocol, attack table, planned verification layers).
 
 ### Added (provider marketplace foundation)

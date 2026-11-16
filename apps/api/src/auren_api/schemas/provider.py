@@ -14,6 +14,7 @@ MAX_LOGICAL_CORES = 4096
 MAX_BYTES = 2**50  # 1 PiB: rejects absurd self-reported values
 MAX_GPUS = 16
 MAX_NETWORK_INTERFACES = 32
+MAX_CGROUP_CONTROLLERS = 32
 MAX_LINK_SPEED_MBPS = 1_000_000
 MAX_MACHINE_NAME_LENGTH = 100
 
@@ -41,13 +42,8 @@ class _Strict(BaseModel):
 
 class CpuReport(_Strict):
     model_name: Text200
-    architecture: Text50
     logical_cores: int = Field(ge=1, le=MAX_LOGICAL_CORES)
     physical_cores: int | None = Field(default=None, ge=1, le=MAX_LOGICAL_CORES)
-    hardware_virtualization: bool
-    confidential_computing_flags: list[Literal["sev", "sev_es", "sev_snp", "tdx_host_platform"]] = (
-        Field(max_length=4)
-    )
 
     @model_validator(mode="after")
     def _physical_not_above_logical(self) -> Self:
@@ -68,6 +64,8 @@ class MemoryReport(_Strict):
 
 
 class GpuReport(_Strict):
+    index: int = Field(ge=0, lt=MAX_GPUS)
+    uuid: Text200
     name: Text200
     memory_total_bytes: int = Field(ge=0, le=MAX_BYTES)
     driver_version: Text50
@@ -87,9 +85,23 @@ class StorageReport(_Strict):
 
 class PlatformReport(_Strict):
     system: Text50
+    architecture: Text50
     kernel_release: Text100
     os_name: Text200
-    kvm_available: bool
+
+
+class SecurityReport(_Strict):
+    """Reported host capabilities. Indicators only: nothing here is attested."""
+
+    cpu_reports_hardware_virtualization: bool
+    kvm_device_present: bool
+    kvm_device_usable_by_agent: bool
+    cgroup_v2: bool
+    cgroup_controllers: list[Text32] = Field(max_length=MAX_CGROUP_CONTROLLERS)
+    agent_running_as_root: bool
+    confidential_computing_flags: list[Literal["sev", "sev_es", "sev_snp", "tdx_host_platform"]] = (
+        Field(max_length=4)
+    )
 
 
 class NetworkInterfaceReport(_Strict):
@@ -103,18 +115,29 @@ class InventoryReport(_Strict):
     memory: MemoryReport
     gpus: list[GpuReport] = Field(max_length=MAX_GPUS)
     storage: StorageReport
+    security: SecurityReport
     platform: PlatformReport
     network: list[NetworkInterfaceReport] = Field(max_length=MAX_NETWORK_INTERFACES)
 
+    @model_validator(mode="after")
+    def _gpus_are_consistently_indexed(self) -> Self:
+        """Listings refer to GPUs by index, so indices must be 0..n-1 and devices distinct."""
+        if sorted(gpu.index for gpu in self.gpus) != list(range(len(self.gpus))):
+            raise ValueError("gpu indices must be unique and contiguous from 0")
+        if len({gpu.uuid for gpu in self.gpus}) != len(self.gpus):
+            raise ValueError("gpu uuids must be unique")
+        return self
+
     def to_snapshot(self) -> InventorySnapshot:
+        by_index = sorted(self.gpus, key=lambda gpu: gpu.index)
         return InventorySnapshot(
             logical_cores=self.cpu.logical_cores,
             memory_total_bytes=self.memory.total_bytes,
             storage_total_bytes=self.storage.total_bytes,
-            gpu_memory_bytes=tuple(gpu.memory_total_bytes for gpu in self.gpus),
-            hardware_virtualization=self.cpu.hardware_virtualization,
-            kvm_available=self.platform.kvm_available,
-            confidential_computing_flags=tuple(self.cpu.confidential_computing_flags),
+            gpu_memory_bytes=tuple(gpu.memory_total_bytes for gpu in by_index),
+            hardware_virtualization=self.security.cpu_reports_hardware_virtualization,
+            kvm_available=self.security.kvm_device_present,
+            confidential_computing_flags=tuple(self.security.confidential_computing_flags),
         )
 
 

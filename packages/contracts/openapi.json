@@ -95,31 +95,6 @@
       "CpuReport": {
         "additionalProperties": false,
         "properties": {
-          "architecture": {
-            "maxLength": 50,
-            "minLength": 1,
-            "pattern": "^[^\\x00-\\x1f\\x7f]+$",
-            "title": "Architecture",
-            "type": "string"
-          },
-          "confidential_computing_flags": {
-            "items": {
-              "enum": [
-                "sev",
-                "sev_es",
-                "sev_snp",
-                "tdx_host_platform"
-              ],
-              "type": "string"
-            },
-            "maxItems": 4,
-            "title": "Confidential Computing Flags",
-            "type": "array"
-          },
-          "hardware_virtualization": {
-            "title": "Hardware Virtualization",
-            "type": "boolean"
-          },
           "logical_cores": {
             "maximum": 4096.0,
             "minimum": 1.0,
@@ -149,10 +124,7 @@
         },
         "required": [
           "model_name",
-          "architecture",
-          "logical_cores",
-          "hardware_virtualization",
-          "confidential_computing_flags"
+          "logical_cores"
         ],
         "title": "CpuReport",
         "type": "object"
@@ -286,6 +258,12 @@
             "title": "Driver Version",
             "type": "string"
           },
+          "index": {
+            "exclusiveMaximum": 16.0,
+            "minimum": 0.0,
+            "title": "Index",
+            "type": "integer"
+          },
           "memory_total_bytes": {
             "maximum": 1125899906842624.0,
             "minimum": 0.0,
@@ -298,9 +276,18 @@
             "pattern": "^[^\\x00-\\x1f\\x7f]+$",
             "title": "Name",
             "type": "string"
+          },
+          "uuid": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+            "title": "Uuid",
+            "type": "string"
           }
         },
         "required": [
+          "index",
+          "uuid",
           "name",
           "memory_total_bytes",
           "driver_version"
@@ -336,6 +323,9 @@
           "platform": {
             "$ref": "#/components/schemas/PlatformReport"
           },
+          "security": {
+            "$ref": "#/components/schemas/SecurityReport"
+          },
           "storage": {
             "$ref": "#/components/schemas/StorageReport"
           }
@@ -345,6 +335,7 @@
           "memory",
           "gpus",
           "storage",
+          "security",
           "platform",
           "network"
         ],
@@ -720,16 +711,19 @@
       "PlatformReport": {
         "additionalProperties": false,
         "properties": {
+          "architecture": {
+            "maxLength": 50,
+            "minLength": 1,
+            "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+            "title": "Architecture",
+            "type": "string"
+          },
           "kernel_release": {
             "maxLength": 100,
             "minLength": 1,
             "pattern": "^[^\\x00-\\x1f\\x7f]+$",
             "title": "Kernel Release",
             "type": "string"
-          },
-          "kvm_available": {
-            "title": "Kvm Available",
-            "type": "boolean"
           },
           "os_name": {
             "maxLength": 200,
@@ -748,9 +742,9 @@
         },
         "required": [
           "system",
+          "architecture",
           "kernel_release",
-          "os_name",
-          "kvm_available"
+          "os_name"
         ],
         "title": "PlatformReport",
         "type": "object"
@@ -969,6 +963,68 @@
           "listing_paused"
         ],
         "title": "ScanResultResponse",
+        "type": "object"
+      },
+      "SecurityReport": {
+        "additionalProperties": false,
+        "description": "Reported host capabilities. Indicators only: nothing here is attested.",
+        "properties": {
+          "agent_running_as_root": {
+            "title": "Agent Running As Root",
+            "type": "boolean"
+          },
+          "cgroup_controllers": {
+            "items": {
+              "maxLength": 32,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "type": "string"
+            },
+            "maxItems": 32,
+            "title": "Cgroup Controllers",
+            "type": "array"
+          },
+          "cgroup_v2": {
+            "title": "Cgroup V2",
+            "type": "boolean"
+          },
+          "confidential_computing_flags": {
+            "items": {
+              "enum": [
+                "sev",
+                "sev_es",
+                "sev_snp",
+                "tdx_host_platform"
+              ],
+              "type": "string"
+            },
+            "maxItems": 4,
+            "title": "Confidential Computing Flags",
+            "type": "array"
+          },
+          "cpu_reports_hardware_virtualization": {
+            "title": "Cpu Reports Hardware Virtualization",
+            "type": "boolean"
+          },
+          "kvm_device_present": {
+            "title": "Kvm Device Present",
+            "type": "boolean"
+          },
+          "kvm_device_usable_by_agent": {
+            "title": "Kvm Device Usable By Agent",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "cpu_reports_hardware_virtualization",
+          "kvm_device_present",
+          "kvm_device_usable_by_agent",
+          "cgroup_v2",
+          "cgroup_controllers",
+          "agent_running_as_root",
+          "confidential_computing_flags"
+        ],
+        "title": "SecurityReport",
         "type": "object"
       },
       "StorageReport": {
