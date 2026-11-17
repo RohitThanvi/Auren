@@ -76,6 +76,33 @@ Linux only (reads `/proc`, `/sys`). The agent needs no root and no extra capabil
 - Logs: JSON on stderr; stdout is reserved for command output. Never log credentials.
 - Update this file and `docs/ARCHITECTURE.md` agent section (via the architect) when behaviour changes.
 
+## Proposal for ADR-0010: privileged-helper interface (NOT adopted, NOT implemented)
+
+Status: design proposal from the provider-agent workstream for the architect to accept, amend or reject. No helper code exists, and no helper wire types should be written until it is accepted and the backend publishes the session/workload messages (enrolment and signed scan requests are published; heartbeat and session messages are not).
+
+**Problem.** Running buyer workloads needs root-equivalent power (Docker daemon, KVM, cgroups, network setup). The agent must stay unprivileged and must never hold the Docker socket (SECURITY.md, ADR-0010). Something minimal has to hold that power, and it must be unable to do more than the provider approved, even if the agent or backend is compromised.
+
+**Proposed design**
+1. **Separate process and user.** The helper (`auren-helper`) is a different OS process under a dedicated service user. It listens on a Unix domain socket that only the agent's user can open, and it checks the peer UID on every connection. No TCP, no inbound network.
+2. **Closed set of typed operations, no strings to execute.** `capabilities`, `prepare_workload`, `start_workload`, `stop_workload`, `release_workload`, `workload_state`, `renew_lease`. Messages are versioned JSON, size-limited and validated with pydantic (`extra="forbid"`). There is no generic exec, no shell, no file read/write, no image build, and no operation that takes a command line for the host.
+3. **The helper re-validates everything itself.** It reads the same provider policy file (same permission checks) and rejects any request exceeding the policy, the host reserve or current free capacity. It never trusts the agent's arithmetic.
+4. **Mandatory limits in the spec.** `WorkloadSpec` requires: `workload_id`, `isolation` (`container` | `microvm`), `trust_class` (`trusted` | `untrusted`), image reference **by digest only** (no tags), entrypoint arguments as a list (passed to the sandbox's own exec, never a host shell), CPU, memory, pids, workspace storage quota, approved GPU UUIDs (whole device, exclusive), `max_duration_seconds` (not above the policy value), and a network profile (`none` or a named egress profile). A spec missing any limit is invalid, not defaulted.
+5. **ADR-0013 enforced in code.** The helper advertises which isolation levels it supports. It refuses `trust_class=untrusted` with `isolation=container`, so the "microVM before untrusted code" release gate cannot be bypassed by configuration drift.
+6. **Docker-phase baseline (trusted workloads only).** Non-root user, all capabilities dropped, `no-new-privileges`, default seccomp, read-only root filesystem, no privileged mode, no host network/PID/IPC, no host mounts except one dedicated per-workload workspace, no Docker socket, a private network per workload with no inbound, tmpfs size caps, cgroup CPU/memory/pids limits. Docker containers share the host kernel; this is **not** a strong boundary against a malicious customer.
+7. **Lease and cleanup.** A workload runs under a lease the agent must renew. If the agent dies or the lease or `max_duration_seconds` expires, the helper stops and removes the workload on its own. On start the helper reconciles by label and removes orphaned workloads and workspaces. Pause follows the policy's `pause_behavior` (`drain` or `terminate`), and the agent calls `stop_workload` when availability becomes `thermally_restricted`.
+8. **Audit.** Every operation is logged with workload ID, operation, validated limits and outcome to a local append-only log. Specs carry no credentials and the log never contains any.
+9. **MicroVM path.** Both isolation levels sit behind one `WorkloadRuntime` interface chosen by `isolation`. A microVM runtime (for example Firecracker or Cloud Hypervisor) is driven through typed config and API calls, never shell strings, and needs a usable `/dev/kvm` (already reported by `SecurityCapabilities`).
+
+**Open questions (need the architect or backend owner)**
+- Who issues `workload_id` and session authorization, and how does the agent prove a start request is authorized? The agent already signs its requests with its Ed25519 identity (SCAN.md); the missing piece is the backend-to-agent session message and how the helper learns a start request is genuine and not merely agent-originated.
+- Image distribution: which registry, and is signature verification required beyond the digest?
+- How buyer entrypoint arguments are supplied and bounded.
+- Network egress profiles: what exists, and who defines them.
+- GPU passthrough into a microVM (device isolation is hard; may need to stay container-only or be excluded for untrusted workloads).
+- Helper language and packaging (Python reuse vs a small Go binary), and whether Docker runs rootless for the helper to shrink its blast radius.
+
+**Tests required before adoption of any implementation**: the helper rejects specs missing a limit, using tags instead of digests, exceeding policy or free capacity, using `untrusted` with `container`, or naming an unknown operation; peer-UID check; lease expiry stops a workload; orphan cleanup after restart. Container hardening must be verified on a real Docker host, which has not been possible in the authoring environment.
+
 ## Backend owner's answers to the earlier requests
 
 - **Agent protocol:** published and implemented: enrolment (one-time token, Ed25519 key), credential rotation (re-enrol; the old key is revoked), signed requests with replay protection, scan claim and result. See [SCAN.md](SCAN.md) and [API_CONTRACTS.md](API_CONTRACTS.md). Not published yet: heartbeat and session messages (no workloads exist). The agent-side client for `enroll` and `run-scan` was written by the backend owner to make the protocol testable end to end; Contributor 2 owns it from here and should review it.
